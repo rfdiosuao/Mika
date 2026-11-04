@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{index .Copy "pageTitle"}}</title>
   <link rel="stylesheet" href="/style.css">
+  <script src="/qrcode.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
@@ -12,7 +13,7 @@
   <main>
     <div class="intro"><h1>{{index .Copy "heading"}}</h1><p>{{index .Copy "intro"}}</p></div>
     {{if .Message}}<section class="notice {{if .Bad}}notice-bad{{else}}notice-ok{{end}}" role="{{if .Bad}}alert{{else}}status{{end}}"><strong>{{index .Copy .Message}}</strong></section>{{end}}
-    {{if .Code}}<section class="card pairing-code" aria-labelledby="code-heading"><h2 id="code-heading">{{index .Copy "pairingCode"}}</h2><output><strong>{{.Code}}</strong></output><p class="caption">{{index .Copy "codeHint"}}</p></section>{{end}}
+    {{if .Code}}<section class="card pairing-code" data-code="{{.Code}}" aria-labelledby="code-heading"><h2 id="code-heading">{{index .Copy "pairingCode"}}</h2><div id="pairing-qr" class="pairing-qr" hidden></div><output><strong>{{.Code}}</strong></output><p class="caption">{{index .Copy "codeHint"}}</p><p class="caption pairing-qr-hint">{{index .Copy "qrHint"}}</p></section>{{end}}
     <h2 class="group-label">{{if .Confirm}}{{index .Copy "confirmTitle"}}{{else}}{{index .Copy "pairingTitle"}}{{end}}</h2>
     <form id="pairing-form" class="card" action="/admin" method="post">
       <div class="field-row"><label for="owner-key">{{index .Copy "ownerKey"}}</label><input id="owner-key" name="owner_key" type="password" required autocomplete="current-password" spellcheck="false" placeholder="{{index .Copy "ownerRequired"}}" data-required-message="{{index .Copy "ownerRequired"}}" aria-describedby="owner-hint"></div>

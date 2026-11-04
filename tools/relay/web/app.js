@@ -1,4 +1,19 @@
 "use strict";
+const pairing = document.querySelector(".pairing-code");
+const qrBox = document.getElementById("pairing-qr");
+if (pairing && qrBox && typeof qrcode === "function") {
+  const payload = "mika://relay?url=" + encodeURIComponent(location.origin) +
+    "&code=" + encodeURIComponent(pairing.dataset.code || "");
+  try {
+    const qr = qrcode(0, "M");
+    qr.addData(payload);
+    qr.make();
+    qrBox.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 8, scalable: true });
+    qrBox.hidden = false;
+  } catch (_) {
+    qrBox.hidden = true;
+  }
+}
 const form = document.getElementById("pairing-form");
 const key = document.getElementById("owner-key");
 const dialog = document.getElementById("confirm-dialog");

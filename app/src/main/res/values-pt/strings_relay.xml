@@ -26,4 +26,8 @@
     <string name="relay_intro">O gateway encaminha para o seu celular, para acesso remoto, as solicitações da CLI e do MCP que normalmente passam por Wi-Fi / rede local. Instale-o no seu próprio servidor público antes de parear.</string>
     <string name="relay_device_access">Permitir ativação e desbloqueio pelo gateway</string>
     <string name="relay_device_access_sub">Desativado por padrão. Também exige “Permitir ativação e desbloqueio remotos” nesta página. Com as duas opções ativadas, qualquer pessoa com o token de acesso pode ativar e desbloquear este celular pela internet.</string>
+    <string name="relay_scan_qr">Escanear código QR</string>
+    <string name="relay_scan_qr_sub">Escaneie o código QR exibido na página do gateway para preencher o endereço e o código de emparelhamento.</string>
+    <string name="relay_scan_prompt">Escaneie o código QR de emparelhamento do Mika</string>
+    <string name="relay_qr_invalid">Este não é um código QR de emparelhamento do Mika.</string>
 </resources>

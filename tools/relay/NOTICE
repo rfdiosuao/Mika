@@ -1,2 +1,10 @@
 Mika
 Copyright 2026 wangzan101
+
+## QR Code Generator for JavaScript
+
+- Project: https://github.com/kazuhikoarase/qrcode-generator
+- File: `web/qrcode.js`
+- License: MIT
+- Usage: generates the pairing QR code on the gateway admin page.
+- Copyright (c) 2009 Kazuhiko Arase

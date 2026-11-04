@@ -26,4 +26,8 @@
     <string name="relay_intro">ゲートウェイは、通常 Wi-Fi / LAN で送られる CLI と MCP のリクエストを、リモートアクセス用にスマホへ転送します。ペア設定の前に、ご自身の公開サーバーに設置してください。</string>
     <string name="relay_device_access">ゲートウェイ経由のスリープ解除とロック解除を許可</string>
     <string name="relay_device_access_sub">デフォルトではオフです。このページの「リモートでのスリープ解除とロック解除を許可」もオンにする必要があります。両方オンにすると、アクセストークンを持つ人なら誰でも、インターネット経由でこのスマホのスリープ解除とロック解除ができます。</string>
+    <string name="relay_scan_qr">QRコードをスキャン</string>
+    <string name="relay_scan_qr_sub">ゲートウェイのページに表示されたQRコードをスキャンすると、アドレスとペアリングコードが自動で入力されます。</string>
+    <string name="relay_scan_prompt">MikaのペアリングQRコードをスキャン</string>
+    <string name="relay_qr_invalid">Mikaのペアリング用QRコードではありません。</string>
 </resources>

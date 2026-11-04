@@ -10,7 +10,7 @@
   "unpair": "Unpair phone",
   "pairingCode": "Pairing code",
   "codeHint": "Expires in five minutes. Use once.",
-  "phoneHint": "In Mika: Settings → Connect a computer → Remote. Enter this gateway and code, then allow remote access.",
+  "phoneHint": "In Mika: Settings → Advanced → Connect a computer → Remote. Scan the QR code, or enter this gateway and code, then allow remote access.",
   "aboutTitle": "About this connection",
   "accessTitle": "Your phone checks access",
   "accessBody": "Use the same phone access token for LAN, remote CLI and MCP. The gateway does not issue, check or store it.",
@@ -24,7 +24,7 @@
   "confirmBody": "The remote connection will close. The access token on your phone stays unchanged. Pair again to restore forwarding.",
   "confirm": "Unpair",
   "cancel": "Cancel",
-  "codeCreated": "Enter this code in Mika to pair your phone.",
+  "codeCreated": "Scan the QR code with Mika, or enter this code to pair your phone.",
   "revoked": "Phone unpaired. Remote forwarding is off.",
   "alreadyPaired": "A phone is already paired. Unpair it before creating a new code.",
   "invalidOwner": "The owner key is incorrect. Check the key file on your server.",
@@ -32,5 +32,6 @@
   "invalidRequest": "This request could not be completed. Reload and try again.",
   "rateLimited": "Too many attempts. Wait a minute and try again.",
   "storageError": "Couldn’t save pairing. Check the server data directory.",
-  "confirmHint": "Enter the owner key again to confirm unpairing."
+  "confirmHint": "Enter the owner key again to confirm unpairing.",
+  "qrHint": "Scan this QR code in Mika: Settings → Advanced → Connect a computer → Remote."
 }

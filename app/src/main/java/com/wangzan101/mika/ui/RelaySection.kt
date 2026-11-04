@@ -1,5 +1,8 @@
 package com.wangzan101.mika.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import com.wangzan101.mika.ui.components.MikaDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -11,11 +14,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import com.wangzan101.mika.R
 import com.wangzan101.mika.core.remote.RelayGateway
+import com.wangzan101.mika.core.remote.RelayQr
 import com.wangzan101.mika.core.remote.RelayState
 import com.wangzan101.mika.mcp.McpRuntime
 import com.wangzan101.mika.settings.RelayConfig
@@ -75,9 +80,31 @@ internal fun RelayControls(config: RelayConfig, state: RelayState, busy: Boolean
     var gateway by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
     var confirm by remember { mutableStateOf(false) }
+    var qrInvalid by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val scanner = rememberLauncherForActivityResult(ScanContract()) { result ->
+        val parsed = result.contents?.let { RelayQr.parse(it) }
+        if (parsed == null) { qrInvalid = true } else {
+            qrInvalid = false
+            gateway = parsed.gateway
+            code = parsed.code
+            onPair(parsed.gateway, parsed.code)
+        }
+    }
+    fun scan() {
+        qrInvalid = false
+        scanner.launch(ScanOptions().setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+            .setPrompt(context.getString(R.string.relay_scan_prompt))
+            .setBeepEnabled(false).setOrientationLocked(true))
+    }
     if (!config.paired) {
         GroupCard {
             ListRow(MikaIcons.Link, stringResource(R.string.relay_pair_title), stringResource(R.string.relay_pair_sub), first = true)
+            RowActions {
+                MikaButton(stringResource(if (busy) R.string.relay_busy else R.string.relay_scan_qr), ::scan,
+                    size = ButtonSize.Small, enabled = !busy, modifier = Modifier.testTag("relay-scan"))
+            }
+            FooterNote(stringResource(R.string.relay_scan_qr_sub))
             InputRow(stringResource(R.string.relay_gateway), gateway, { if (!busy) gateway = it.take(2048) },
                 "https://mika.example.com", keyboard = KeyboardType.Uri, modifier = Modifier.testTag("relay-gateway"))
             InputRow(stringResource(R.string.relay_code), code, { if (!busy) code = it.take(64) },
@@ -121,6 +148,7 @@ internal fun RelayControls(config: RelayConfig, state: RelayState, busy: Boolean
         FooterNote(stringResource(if (mcp) R.string.relay_client_help else R.string.relay_cli_help))
     }
     FooterNote(stringResource(R.string.relay_intro))
+    if (qrInvalid) FooterNote(stringResource(R.string.relay_qr_invalid))
     if (failed) FooterNote(stringResource(R.string.relay_failed))
     if (confirm) MikaDialog(onDismissRequest = { confirm = false },
         title = { Text(stringResource(R.string.relay_unpair)) }, text = { Text(stringResource(R.string.relay_unpair_body)) },

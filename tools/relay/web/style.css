@@ -32,6 +32,9 @@ input { flex: 1; width: 100%; padding: 8px 0; border-radius: 4px; }
 .notice-bad { background: var(--bad-soft); color: var(--bad); }
 .pairing-code { padding: 20px 16px; }
 .pairing-code output { display: block; font: 600 1.25rem/1.75rem ui-monospace, monospace; letter-spacing: .04em; overflow-wrap: anywhere; margin-bottom: 8px; }
+.pairing-qr { width: 200px; max-width: 100%; margin: 0 auto 12px; }
+.pairing-qr svg { display: block; width: 100%; height: auto; }
+.pairing-qr-hint { margin-top: 8px; }
 .text-row { padding: 16px; }
 .text-row + .text-row { border-top: .5px solid var(--hair); }
 .text-row p { margin-top: 4px; }

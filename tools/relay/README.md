@@ -21,7 +21,7 @@ Read the owner-key file privately. It is the administrator credential, not an MC
 
 Open the gateway's HTTPS address in a browser, enter the owner key and choose **Create pairing code**. The code expires in five minutes and works once. An existing phone must be revoked before pairing another one.
 
-In Mika, open **Settings → Connect a computer → Remote**, enter the gateway origin and code, and tap **Pair gateway**. Pairing leaves access off. Explicitly enable **Allow remote access**. Allow appropriate background operation and keep Mika's progress notification available.
+The page shows a QR code containing `mika://relay?url=<gateway>&code=<code>`. In Mika, open **Settings → Advanced → Connect a computer → Remote** and tap **Scan QR code**; the app fills in the gateway and code and starts pairing. The address and code can still be entered manually. Pairing leaves access off. Explicitly enable **Allow remote access**. Allow appropriate background operation and keep Mika's progress notification available.
 
 ### Existing Nginx server
 
@@ -80,7 +80,7 @@ Offline requests are not queued. `device_offline` means no device connection was
 
 Go templates render one management page; embedded local CSS and a small progressive-enhancement script provide the layout and confirmation dialog. There is no Node build, framework, CDN or browser storage for credentials. Pairing and confirmation also work without JavaScript. All styles follow the App's semantic colors, type scale, grouped cards, spacing and button sizes from `app/ui/theme`, with system light/dark mode, visible keyboard focus and a narrow-screen layout.
 
-The three catalogs in `web/` cover the App's UI languages: English, Simplified Chinese and Traditional Chinese. Browser language preferences select the initial language; a user choice is stored in a language-only cookie. Server errors and required-field messages are localized. The App's own language setting and this browser preference are independent.
+The three catalogs in `web/` cover the App's UI languages: English, Simplified Chinese and Traditional Chinese. Browser language preferences select the initial language; a user choice is stored in a language-only cookie. Server errors and required-field messages are localized. The App's own language setting and this browser preference are independent. The pairing QR is generated locally in the browser from the gateway origin and one-time code; no third-party QR service is contacted.
 
 ## Operate and test
 
@@ -107,4 +107,4 @@ Go 1.23 or later builds the service; use a supported toolchain for deployment. T
 
 The tunnel forwards only `/mcp`, `/api/v1` and `/api/v1/…`, using GET/POST/DELETE; phone routing enforces each endpoint's methods and parameters. Query strings and an explicit header allowlist pass unchanged. Bodies are bounded to 1 MiB, headers/query to 8 KiB and concurrent requests to eight. Oversized phone responses return an error without revoking pairing. No arbitrary URL/TCP proxy or offline queue is provided.
 
-Source is under the repository's Apache-2.0 license. The WebSocket dependency, github.com/coder/websocket, uses the ISC license in LICENSE.coder-websocket.txt.
+Source is under the repository's Apache-2.0 license. The WebSocket dependency, github.com/coder/websocket, uses the ISC license in LICENSE.coder-websocket.txt. The embedded QR generator `web/qrcode.js` is MIT licensed; see NOTICE.

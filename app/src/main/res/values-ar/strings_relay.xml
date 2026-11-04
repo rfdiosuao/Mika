@@ -26,4 +26,8 @@
     <string name="relay_intro">تحوّل البوابة إلى هاتفك طلبات CLI وMCP التي تُرسل عادةً عبر Wi-Fi / LAN لتمكين الوصول عن بُعد. انشرها على خادم عام تملكه قبل الإقران.</string>
     <string name="relay_device_access">السماح بالإيقاظ وإلغاء القفل عبر البوابة</string>
     <string name="relay_device_access_sub">متوقف افتراضيًا. ويتطلب أيضًا تفعيل «السماح بالإيقاظ وإلغاء القفل عن بُعد» في هذه الصفحة. عند تفعيل الخيارين، يستطيع أي شخص يملك رمز الوصول إيقاظ هذا الهاتف وإلغاء قفله عبر الإنترنت.</string>
+    <string name="relay_scan_qr">مسح رمز QR</string>
+    <string name="relay_scan_qr_sub">امسح رمز QR المعروض في صفحة البوابة لملء العنوان ورمز الاقتران تلقائيًا.</string>
+    <string name="relay_scan_prompt">امسح رمز QR لاقتران Mika</string>
+    <string name="relay_qr_invalid">هذا ليس رمز QR لاقتران Mika.</string>
 </resources>

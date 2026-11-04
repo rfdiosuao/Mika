@@ -21,7 +21,8 @@
          经已配对的连接授予;不在这里声明的话连授予都做不了 -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- 对话页附件面板里的「最近的照片」:安卓 13 起读照片,14 起可以只给部分照片,12 及以前读外部存储。
-         不给也能用系统照片选择器、文件选择器;拍照走系统相机,不要相机权限 -->
+         不给也能用系统照片选择器、文件选择器;附件拍照走系统相机。相机权限只用于「连接电脑」时扫描配对二维码。 -->
+    <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
     <uses-permission

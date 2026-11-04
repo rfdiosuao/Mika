@@ -128,6 +128,10 @@ func (g *gateway) asset(w http.ResponseWriter, r *http.Request) {
 		name = "web/app.js"
 		kind = "text/javascript; charset=utf-8"
 	}
+	if r.URL.Path == "/qrcode.js" {
+		name = "web/qrcode.js"
+		kind = "text/javascript; charset=utf-8"
+	}
 	b, err := webFiles.ReadFile(name)
 	if err != nil {
 		failure(w, 404, "not_found")

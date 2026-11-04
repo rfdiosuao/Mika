@@ -26,4 +26,8 @@
     <string name="relay_intro">La pasarela reenvía a tu teléfono, para el acceso remoto, las solicitudes de CLI y MCP que normalmente van por Wi-Fi / red local. Despliégala en tu propio servidor público antes de vincular.</string>
     <string name="relay_device_access">Permitir activar y desbloquear a través de la pasarela</string>
     <string name="relay_device_access_sub">Desactivado por defecto. También requiere “Permitir activación y desbloqueo remotos” en esta página. Con ambos activados, cualquiera con el token de acceso puede activar y desbloquear este teléfono por internet.</string>
+    <string name="relay_scan_qr">Escanear código QR</string>
+    <string name="relay_scan_qr_sub">Escanea el código QR de la página del gateway para rellenar la dirección y el código de emparejamiento.</string>
+    <string name="relay_scan_prompt">Escanea el código QR de emparejamiento de Mika</string>
+    <string name="relay_qr_invalid">Este no es un código QR de emparejamiento de Mika.</string>
 </resources>

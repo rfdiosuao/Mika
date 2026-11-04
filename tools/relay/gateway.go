@@ -155,7 +155,7 @@ func (g *gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch r.URL.Path {
-	case "/style.css", "/app.js":
+	case "/style.css", "/app.js", "/qrcode.js":
 		g.asset(w, r)
 	case "/language":
 		g.language(w, r)

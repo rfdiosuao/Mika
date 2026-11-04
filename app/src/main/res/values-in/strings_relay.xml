@@ -26,4 +26,8 @@
     <string name="relay_intro">Gateway meneruskan permintaan CLI dan MCP yang biasanya lewat Wi-Fi / LAN ke ponsel Anda untuk akses jarak jauh. Pasang di server publik Anda sendiri sebelum memasangkan.</string>
     <string name="relay_device_access">Izinkan bangun dan buka kunci lewat gateway</string>
     <string name="relay_device_access_sub">Nonaktif secara default. Juga memerlukan “Izinkan bangun dan buka kunci jarak jauh” di halaman ini. Jika keduanya aktif, siapa pun yang memegang token akses dapat membangunkan dan membuka kunci ponsel ini lewat internet.</string>
+    <string name="relay_scan_qr">Pindai kode QR</string>
+    <string name="relay_scan_qr_sub">Pindai kode QR yang ditampilkan di halaman gateway untuk mengisi alamat dan kode pemasangan.</string>
+    <string name="relay_scan_prompt">Pindai kode QR pemasangan Mika</string>
+    <string name="relay_qr_invalid">Ini bukan kode QR pemasangan Mika.</string>
 </resources>

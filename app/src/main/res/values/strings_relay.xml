@@ -26,4 +26,8 @@
     <string name="relay_intro">The gateway forwards the CLI and MCP requests normally sent over Wi-Fi / LAN to your phone for remote access. Deploy it on your own public server before pairing.</string>
     <string name="relay_device_access">Allow wake and unlock through the gateway</string>
     <string name="relay_device_access_sub">Off by default. Also needs “Allow remote wake and unlock” on this page. When both are on, anyone with the access token can wake and unlock this phone over the internet.</string>
+    <string name="relay_scan_qr">Scan QR code</string>
+    <string name="relay_scan_qr_sub">Scan the QR code shown on the gateway page to fill in the address and pairing code.</string>
+    <string name="relay_scan_prompt">Scan the Mika pairing QR code</string>
+    <string name="relay_qr_invalid">This is not a Mika pairing QR code.</string>
 </resources>

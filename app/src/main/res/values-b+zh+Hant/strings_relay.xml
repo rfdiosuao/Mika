@@ -26,4 +26,8 @@
     <string name="relay_intro">閘道將原本透過 Wi-Fi / 區域網路傳送的 CLI 和 MCP 請求轉送到手機，實現遠端存取。使用前，需在自有公網伺服器上部署閘道。</string>
     <string name="relay_device_access">允許經閘道喚醒和解鎖</string>
     <string name="relay_device_access_sub">預設關閉。還需開啟本頁的「允許遠端喚醒螢幕與解鎖」；兩項都開啟時，持有存取權杖的人可以經網際網路喚醒並解鎖這支手機。</string>
+    <string name="relay_scan_qr">掃碼配對</string>
+    <string name="relay_scan_qr_sub">掃描閘道頁面上顯示的二維碼，自動填入位址和配對碼。</string>
+    <string name="relay_scan_prompt">掃描 Mika 配對二維碼</string>
+    <string name="relay_qr_invalid">這不是 Mika 配對二維碼。</string>
 </resources>

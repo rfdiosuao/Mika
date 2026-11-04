@@ -62,10 +62,23 @@ func TestWebLanguageCookieAndAdminSecretsAreNotReflected(t *testing.T) {
 	if status != 200 || f.g.store.view().DeviceHash != "" {
 		t.Fatal("confirmed revoke failed")
 	}
-	for path, kind := range map[string]string{"/style.css": "text/css", "/app.js": "text/javascript"} {
+	for path, kind := range map[string]string{"/style.css": "text/css", "/app.js": "text/javascript", "/qrcode.js": "text/javascript"} {
 		status, h, b = f.request(t, "GET", path, "", "", "")
 		if status != 200 || !strings.HasPrefix(h.Get("Content-Type"), kind) || len(b) == 0 {
 			t.Fatal("embedded asset unavailable")
 		}
+	}
+}
+
+func TestPairingPageRendersScannableQr(t *testing.T) {
+	f := newFixture(t)
+	status, _, body := f.request(t, "POST", "/admin", "", url.Values{"owner_key": {testOwner}, "action": {"pair"}}.Encode(), "application/x-www-form-urlencoded")
+	if status != 200 || !strings.Contains(string(body), `class="card pairing-code" data-code="`) ||
+		!strings.Contains(string(body), `id="pairing-qr"`) || !strings.Contains(string(body), translations["en"]["qrHint"]) {
+		t.Fatal("pairing page has no QR payload")
+	}
+	status, _, js := f.request(t, "GET", "/qrcode.js", "", "", "")
+	if status != 200 || !strings.Contains(string(js), "createSvgTag") {
+		t.Fatal("QR generator asset unavailable")
 	}
 }

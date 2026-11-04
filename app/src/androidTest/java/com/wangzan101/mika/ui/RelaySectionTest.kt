@@ -53,6 +53,14 @@ class RelaySectionTest {
         compose.onNodeWithTag("relay-code").assertTextEquals("")
     }
 
+
+    @Test fun scanQrIsOfferedOnlyBeforePairing() {
+        page()
+        compose.onNodeWithTag("relay-scan").performScrollTo().assertIsDisplayed()
+        compose.runOnIdle { config.value = RelayConfig(gateway = "https://relay.example/") }
+        compose.onNodeWithTag("relay-scan").assertDoesNotExist()
+    }
+
     @Test fun pairedSettingsKeepTokensHiddenAndRequireExplicitEnableAndUnpair() {
         config.value = RelayConfig(gateway = "https://relay.example/")
         page()

@@ -26,4 +26,8 @@
     <string name="relay_intro">게이트웨이는 보통 Wi-Fi / LAN으로 보내는 CLI와 MCP 요청을 원격으로 휴대전화에 전달해요. 페어링하기 전에 직접 운영하는 공개 서버에 배포하세요.</string>
     <string name="relay_device_access">게이트웨이를 통한 깨우기 및 잠금 해제 허용</string>
     <string name="relay_device_access_sub">기본적으로 꺼져 있어요. 이 페이지의 “원격 깨우기 및 잠금 해제 허용”도 켜야 해요. 둘 다 켜면 액세스 토큰이 있는 누구나 인터넷으로 이 휴대전화를 깨우고 잠금을 해제할 수 있어요.</string>
+    <string name="relay_scan_qr">QR 코드 스캔</string>
+    <string name="relay_scan_qr_sub">게이트웨이 페이지에 표시된 QR 코드를 스캔하면 주소와 페어링 코드가 자동으로 입력됩니다.</string>
+    <string name="relay_scan_prompt">Mika 페어링 QR 코드 스캔</string>
+    <string name="relay_qr_invalid">Mika 페어링 QR 코드가 아닙니다.</string>
 </resources>
