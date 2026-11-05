@@ -25,6 +25,17 @@ class ConversationStoreTest {
         assertNotEquals(id, b.newConversation())
     }
 
+    /** 远程轮询只看一个对话:有记录才有更新时间,没有或已删除为 null,不读其他对话。 */
+    @Test fun updatedAtOnlyForExistingConversation() {
+        val store = ConversationStore(tmp.newFolder("c"))
+        val id = store.newConversation()
+        assertEquals(null, store.updatedAt(id))
+        store.append(id, Turn("你好", "你好", "succeeded"))
+        assertTrue(store.updatedAt(id)!! > 0)
+        store.delete(id)
+        assertEquals(null, store.updatedAt(id))
+    }
+
     /** 留在后台运行的那一页(站点)和它后来关掉的原因跟着那一轮存下;没留页的轮次不写这两个字段。 */
     @Test fun persistsKeptPage() {
         val dir = tmp.newFolder("c")

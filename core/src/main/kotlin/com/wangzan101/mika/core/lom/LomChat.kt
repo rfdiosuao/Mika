@@ -55,7 +55,8 @@ class LomChatMethods(
     private val sleep: (Long) -> Unit = Thread::sleep,
 ) : LomMethods {
     override fun call(method: String, payload: String, sender: String): String? = when (method) {
-        "chat.send" -> send(LomPayload.parse(payload, "chat.invalid_id"), sender)
+        // 同一台桌面超时重发时两个请求可能并发到达:串行处理,收据检查与启动之间不留空隙
+        "chat.send" -> synchronized(this) { send(LomPayload.parse(payload, "chat.invalid_id"), sender) }
         "chat.read" -> read(LomPayload.parse(payload, "chat.session_missing"), sender)
         "chat.list" -> list(LomPayload.parse(payload, "remote.operation_failed"), sender)
         "chat.cancel" -> cancel(LomPayload.parse(payload, "chat.session_missing"), sender)

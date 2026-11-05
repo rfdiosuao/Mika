@@ -96,6 +96,10 @@ class ConversationStore(private val dir: File) {
                 ConversationSummary(id, title(id) ?: first.userText, f.lastModified(), pinnedAt(id), pageOrigin(id), branchOrigin(id))
             }
 
+    /** 对话文件最后改动的时间;对话不存在为 null。只看这一个对话,不像 [list] 要读遍所有对话(远程轮询用)。 */
+    @Synchronized
+    fun updatedAt(conversationId: String): Long? = file(conversationId).takeIf { it.isFile }?.lastModified()
+
     /** 对话起好的标题(见 [ConversationTitler]);没有、读不到为 null。标题放在对话文件旁边的 `.title` 文件里,不动对话文件的格式。 */
     @Synchronized
     fun title(conversationId: String): String? =
