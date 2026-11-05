@@ -16,6 +16,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.wangzan101.mika.MikaApp
 import com.wangzan101.mika.core.lom.LomRelayState
+import com.wangzan101.mika.core.lom.LomScreenAccess
+import com.wangzan101.mika.lom.AndroidLomScreen
+import com.wangzan101.mika.ui.components.MikaSwitch
 import com.wangzan101.mika.ui.components.ButtonKind
 import com.wangzan101.mika.ui.components.ButtonSize
 import com.wangzan101.mika.ui.components.FooterNote
@@ -58,6 +61,7 @@ fun LomManageScreen(onBack: () -> Unit, onScan: () -> Unit) {
                 }
             }
             FooterNote(LomCopy.PAIRED_NOTE)
+            ScreenAccessRows(runtime)
         }
         note?.let { FooterNote(it, Modifier.padding(top = 4.dp)) }
     }
@@ -76,6 +80,26 @@ fun LomManageScreen(onBack: () -> Unit, onScan: () -> Unit) {
         },
         dismissButton = { TextButton({ confirm = false }) { Text(LomCopy.CANCEL) } },
     )
+}
+
+/** 屏幕类授权:默认都关,逐项由用户打开;显示最近一次被电脑查看/操作的时间。 */
+@Composable
+private fun ScreenAccessRows(runtime: com.wangzan101.mika.lom.LomRuntime) {
+    val kv = runtime.kv
+    var view by remember { mutableStateOf(kv.get(AndroidLomScreen.flag(LomScreenAccess.View)) == "1") }
+    var control by remember { mutableStateOf(kv.get(AndroidLomScreen.flag(LomScreenAccess.Control)) == "1") }
+    fun last(a: LomScreenAccess) = kv.get(AndroidLomScreen.last(a))?.toLongOrNull()?.let {
+        LomCopy.lastUsed(DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(it)))
+    }
+    GroupCard(Modifier.padding(top = 4.dp)) {
+        ListRow(MikaIcons.Desktop, LomCopy.ALLOW_VIEW, last(LomScreenAccess.View) ?: LomCopy.ALLOW_VIEW_SUB, first = true) {
+            MikaSwitch(view, { on -> runCatching { kv.put(AndroidLomScreen.flag(LomScreenAccess.View), if (on) "1" else "0") }.onSuccess { view = on } }, Modifier.testTag("lom-allow-view"))
+        }
+        ListRow(MikaIcons.Desktop, LomCopy.ALLOW_CONTROL, last(LomScreenAccess.Control) ?: LomCopy.ALLOW_CONTROL_SUB, first = false) {
+            MikaSwitch(control, { on -> runCatching { kv.put(AndroidLomScreen.flag(LomScreenAccess.Control), if (on) "1" else "0") }.onSuccess { control = on } }, Modifier.testTag("lom-allow-control"))
+        }
+    }
+    FooterNote(LomCopy.SCREEN_NOTE)
 }
 
 internal fun stateText(s: LomRelayState): String = when (s) {

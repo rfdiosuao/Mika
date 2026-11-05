@@ -15,6 +15,9 @@ import com.wangzan101.mika.core.lom.FileReplayStore
 import com.wangzan101.mika.core.lom.EncryptedFileLomKv
 import com.wangzan101.mika.core.lom.LomAppsPort
 import com.wangzan101.mika.core.lom.LomBasicMethods
+import com.wangzan101.mika.core.lom.LomChatMethods
+import com.wangzan101.mika.core.lom.LomFileMethods
+import com.wangzan101.mika.core.lom.LomScreenMethods
 import com.wangzan101.mika.core.lom.LomDeviceMethods
 import com.wangzan101.mika.core.lom.LomKv
 import com.wangzan101.mika.core.lom.LomMethodSet
@@ -62,6 +65,9 @@ class LomRuntime(private val context: Context) {
     private fun methods(): LomMethods = LomMethodSet(
         modelMethods,
         LomDeviceMethods(kv, AndroidApps(context)),
+        LomChatMethods(AndroidChat(context.applicationContext as com.wangzan101.mika.MikaApp), kv, modelReady = { modelMethods.hasModel(it) }),
+        LomScreenMethods(AndroidLomScreen(context, kv), kv),
+        LomFileMethods(File(dir, "files"), AndroidGallery(context)),
         LomBasicMethods(status = ::deviceStatus),
     )
 
@@ -91,7 +97,10 @@ class LomRuntime(private val context: Context) {
         // 解除配对、被桌面移除或凭据失效(配对记录变空)时移除「麓鸣」服务商;启动时也核对一次,收拾上次没来得及清的
         scope.launch {
             store.state.collect { p ->
-                if (p == null) runCatching { modelMethods.clear() }.onFailure { Log.w(TAG, "could not remove Lom provider") }
+                if (p == null) {
+                    runCatching { modelMethods.clear() }.onFailure { Log.w(TAG, "could not remove Lom provider") }
+                    clearDesktopState()
+                }
                 else _modelName.value = if (modelMethods.hasModel(p.trustedKeys.firstOrNull().orEmpty())) currentModel() else null
             }
         }
@@ -103,6 +112,14 @@ class LomRuntime(private val context: Context) {
                 }
             }
         }
+    }
+
+    /** 解除配对:这台桌面的授权、收据、会话归属、暂存文件一并清掉(手机上的对话本身保留);再次配对要重新授权。 */
+    private fun clearDesktopState() {
+        runCatching {
+            listOf("screen.allow.", "screen.last.", "screen.r.", "chat.s.", "chat.r.", "device.name.").forEach { pre -> kv.keys(pre).forEach(kv::remove) }
+            File(dir, "files").deleteRecursively()
+        }.onFailure { Log.w(TAG, "could not clear desktop state") }
     }
 
     private fun currentModel(): String? = (context.applicationContext as com.wangzan101.mika.MikaApp).providers

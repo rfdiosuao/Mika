@@ -56,6 +56,12 @@ object LomCopy {
     const val UNPAIR_BODY = "解除后这台电脑不能再向手机派活。手机上的对话和记忆都会保留。解除需要联网通知云端。"
     const val UNPAIR_NOT_NOTIFIED = "已在手机上解除配对，但没能通知云端。电脑上可能还显示这台手机，可以在电脑上移除它。"
     const val PAIRED_NOTE = "电脑可以查看这台手机的状态和应用列表、推送模型。不支持的功能会明确回复「暂不支持」，不会假装完成。"
+    const val ALLOW_VIEW = "允许电脑查看屏幕"
+    const val ALLOW_VIEW_SUB = "截图和读取界面内容（密码框内容不会上报）"
+    const val ALLOW_CONTROL = "允许电脑操作屏幕"
+    const val ALLOW_CONTROL_SUB = "点按、滑动、输入、返回、回桌面、打开应用"
+    fun lastUsed(text: String) = "最近一次：$text"
+    const val SCREEN_NOTE = "默认关闭。你在「应用权限」里禁用的应用，电脑始终看不到也操作不了。手机上有任务在运行时，电脑的操作会被拒绝。"
     const val MODEL_WAITING = "等待电脑推送模型"
     /** 「配置模型」页入口的副标题:未对接/等待推送/已在使用。 */
     fun modelRowSub(paired: Boolean, desktop: String?, model: String?): String = when {
