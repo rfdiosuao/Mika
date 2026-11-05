@@ -35,3 +35,13 @@ class TestSecretBox(private val key: ByteArray = ByteArray(32) { 3 }) : LomSecre
         return c.doFinal(blob, 12, blob.size - 12)
     }
 }
+
+/** 内存里的 [LomKv],可注入落盘失败。 */
+class MemoryLomKv : LomKv {
+    val map = LinkedHashMap<String, String>()
+    var failWrites = false
+    override fun get(key: String) = map[key]
+    override fun put(key: String, value: String) { if (failWrites) throw LomException("remote.operation_failed"); map[key] = value }
+    override fun remove(key: String) { map.remove(key) }
+    override fun keys(prefix: String) = map.keys.filter { it.startsWith(prefix) }
+}
