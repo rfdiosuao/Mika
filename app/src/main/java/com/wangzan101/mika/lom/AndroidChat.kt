@@ -25,6 +25,7 @@ class AndroidChat(private val app: MikaApp) : LomChatPort {
     private val store: ConversationStore get() = app.conversations
 
     override fun start(requestId: String, goal: String, conversation: String) {
+        recent = null // 刚开始的任务马上要被「会话忙不忙」看到
         try {
             service.start(goal, conversation, requestId)
         } catch (e: RemoteTaskError) {
@@ -38,25 +39,35 @@ class AndroidChat(private val app: MikaApp) : LomChatPort {
     }
 
     override fun answer(taskId: String, text: String): Boolean = try {
+        recent = null
         service.answer(taskId, text); true
     } catch (_: RemoteTaskError) { false }
 
-    override fun tasks(conversation: String): List<LomTaskView> =
-        runCatching { app.remoteTasks.list(RemoteTaskService.MAX_LIST) }.getOrDefault(emptyList())
-            .filter { it.conversation == conversation }.reversed().map(::view)
+    // chat.list 对每个会话都要查一遍任务:短时间内共用同一份最近任务,不为每个会话各读一次收据库
+    @Volatile private var recent: Pair<Long, List<RemoteTask>>? = null
 
-    override fun cancel(taskId: String) { runCatching { service.cancel(taskId) } }
+    private fun recentTasks(): List<RemoteTask> {
+        val now = System.currentTimeMillis()
+        recent?.takeIf { now - it.first < CACHE_MS }?.let { return it.second }
+        return runCatching { app.remoteTasks.list(RemoteTaskService.MAX_LIST) }.getOrDefault(emptyList()).also { recent = now to it }
+    }
+
+    override fun tasks(conversation: String): List<LomTaskView> =
+        recentTasks().filter { it.conversation == conversation }.reversed().map(::view)
+
+    override fun cancel(taskId: String) { runCatching { service.cancel(taskId) }; recent = null }
 
     override fun turns(conversation: String): List<LomTurnView>? {
-        if (store.list().none { it.id == conversation }) return null
+        if (store.updatedAt(conversation) == null) return null
         return store.turns(conversation).map { LomTurnView(it.userText, it.outcome, phaseOf(it.status)) }
     }
 
+    // 只读这一个对话:chat.read 运行期间每秒轮询,不能每次读遍所有对话
     override fun summary(conversation: String): LomSummary? =
-        store.list().firstOrNull { it.id == conversation }?.let { LomSummary(it.title, it.updatedAt, it.pinnedAt != null) }
+        store.updatedAt(conversation)?.let { LomSummary(store.title(conversation), it, store.pinnedAt(conversation) != null) }
 
     override fun rename(conversation: String, title: String) = store.rename(conversation, title)
-    override fun pin(conversation: String, pinned: Boolean) = store.setPinned(conversation, pinned) || store.pinnedAt(conversation) != null == pinned
+    override fun pin(conversation: String, pinned: Boolean) = store.setPinned(conversation, pinned) || (store.pinnedAt(conversation) != null) == pinned
     override fun delete(conversation: String) = runBlocking { app.conversationDeleter.delete(conversation) }
 
     private fun view(t: RemoteTask): LomTaskView {
@@ -81,6 +92,8 @@ class AndroidChat(private val app: MikaApp) : LomChatPort {
         }
         return LomTaskView(t.id, t.goal, t.createdAtMs, phase, text)
     }
+
+    private companion object { const val CACHE_MS = 150L }
 
     private fun phaseOf(status: String) = when (status) {
         "succeeded", "unverified" -> LomPhase.Completed
