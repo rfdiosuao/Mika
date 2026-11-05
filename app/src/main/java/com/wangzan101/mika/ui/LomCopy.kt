@@ -62,6 +62,7 @@ object LomCopy {
     const val ALLOW_CONTROL_SUB = "点按、滑动、输入、返回、回桌面、打开应用"
     fun lastUsed(text: String) = "最近一次：$text"
     const val SCREEN_NOTE = "默认关闭。你在「应用权限」里禁用的应用，电脑始终看不到也操作不了。手机上有任务在运行时，电脑的操作会被拒绝。"
+    fun deviceNameOnDesktop(name: String) = "在电脑上的名称：$name"
     const val MODEL_WAITING = "等待电脑推送模型"
     /** 「配置模型」页入口的副标题:未对接/等待推送/已在使用。 */
     fun modelRowSub(paired: Boolean, desktop: String?, model: String?): String = when {
