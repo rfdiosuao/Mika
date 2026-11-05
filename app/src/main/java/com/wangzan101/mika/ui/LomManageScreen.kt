@@ -15,6 +15,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.wangzan101.mika.MikaApp
+import com.wangzan101.mika.core.lom.LomDeviceMethods
 import com.wangzan101.mika.core.lom.LomRelayState
 import com.wangzan101.mika.ui.components.ButtonKind
 import com.wangzan101.mika.ui.components.ButtonSize
@@ -53,6 +54,10 @@ fun LomManageScreen(onBack: () -> Unit, onScan: () -> Unit) {
                     ListRow(MikaIcons.Desktop, d.name.ifBlank { LomCopy.NAME }, LomCopy.approvedAt(DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(d.approvedAtMs))), first = i == 0)
                 }
                 ListRow(MikaIcons.Link, stateText(relay), first = false)
+                // 电脑上改过这台手机的名字(device.rename)就显示出来,原样展示
+                p.trustedKeys.firstOrNull()?.let { LomDeviceMethods.savedName(runtime.kv, it) }?.let {
+                    ListRow(MikaIcons.Desktop, LomCopy.deviceNameOnDesktop(it), first = false)
+                }
                 RowActions {
                     MikaButton(LomCopy.UNPAIR, { confirm = true }, kind = ButtonKind.Text, size = ButtonSize.Small, enabled = !busy, modifier = Modifier.testTag("lom-unpair"))
                 }

@@ -56,6 +56,7 @@ object LomCopy {
     const val UNPAIR_BODY = "解除后这台电脑不能再向手机派活。手机上的对话和记忆都会保留。解除需要联网通知云端。"
     const val UNPAIR_NOT_NOTIFIED = "已在手机上解除配对，但没能通知云端。电脑上可能还显示这台手机，可以在电脑上移除它。"
     const val PAIRED_NOTE = "电脑可以查看这台手机的状态和应用列表、推送模型。不支持的功能会明确回复「暂不支持」，不会假装完成。"
+    fun deviceNameOnDesktop(name: String) = "在电脑上的名称：$name"
     const val MODEL_WAITING = "等待电脑推送模型"
     /** 「配置模型」页入口的副标题:未对接/等待推送/已在使用。 */
     fun modelRowSub(paired: Boolean, desktop: String?, model: String?): String = when {
