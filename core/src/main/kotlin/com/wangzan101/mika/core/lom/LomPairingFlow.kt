@@ -42,8 +42,8 @@ class LomPairingFlow(
     suspend fun beginWithLink(text: String): LomPending {
         val link = LomPairLink.parse(text.trim(), allowedHosts) // 校验不过时不发任何网络请求
         ensureUnpaired()
-        val self = store.identity()
         return io {
+            val self = store.identity() // 首次会生成密钥并经 Keystore 落盘,放在 IO 线程
             val seen = cloud.inspect(link.host, link.pairingId, link.claimToken)
             // 核对:pairing_id 回显、公钥串合法、指纹与二维码 f 恒定时间相等
             if (seen.pairingId != link.pairingId || !LomKeys.isValid(seen.desktopKeys) ||
@@ -59,9 +59,9 @@ class LomPairingFlow(
     suspend fun beginWithCode(input: String): LomPending {
         val code = LomManualCode.normalize(input)
         ensureUnpaired()
-        val self = store.identity()
         val host = LomPairLink.OFFICIAL_HOST
         return io {
+            val self = store.identity()
             val r = cloud.claimByCode(host, code, self.keys, deviceInfo())
             if (!LomKeys.isValid(r.desktopKeys)) throw LomException("pairing.response_invalid")
             val sas = LomKeys.sas(r.pairingId, r.desktopKeys, self.keys)

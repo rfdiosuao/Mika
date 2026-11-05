@@ -63,11 +63,13 @@ object Licenses {
         Entry("Protocol Buffers", "BSD-3-Clause", "详细 Trace 的 Protobuf 编码。 https://protobuf.dev/"),
         Entry("OkHttp", "Apache-2.0", "版本 4.12.0,用于访问模型接口。https://square.github.io/okhttp/"),
         Entry("Okio", "Apache-2.0", "版本 3.6.0,OkHttp 的依赖。https://github.com/square/okio/"),
-        Entry("AndroidX(含 Jetpack Compose)", "Apache-2.0", "Compose 1.7.6、Material3 1.3.1、Activity 1.9.3、Lifecycle 2.8.3、Core 1.13.1、WebKit 1.12.1 等界面与系统组件库。https://developer.android.com/jetpack/androidx"),
+        Entry("AndroidX(含 Jetpack Compose)", "Apache-2.0", "Compose 1.7.6、Material3 1.3.1、Activity 1.9.3、Lifecycle 2.8.3、Core 1.13.1、WebKit 1.12.1、CameraX 1.4.2 等界面与系统组件库。https://developer.android.com/jetpack/androidx"),
         Entry("Guava ListenableFuture(由 AndroidX 库引入)", "Apache-2.0", "listenablefuture 1.0。https://github.com/google/guava"),
         Entry("scrcpy", "Apache-2.0", "以 shell 身份取得系统上下文的做法仿照 scrcpy,相关源文件头部保留出处。"),
         Entry("Alpine Linux", "各软件包各自的许可证", RUNTIME_NOTE),
         Entry("XZ for Java", "0BSD", "版本 1.10,首次启动时解压自带的运行环境。https://tukaani.org/xz/java.html"),
+        Entry("Bouncy Castle", "MIT", "版本 1.80(bcprov-jdk18on),麓鸣接入用它做 X25519、Ed25519、HKDF 与 ChaCha20-Poly1305。Copyright (c) 2000 - 2025 The Legion of the Bouncy Castle Inc. https://www.bouncycastle.org/"),
+        Entry("ZXing", "Apache-2.0", "版本 3.5.3(core),扫码对接麓鸣时解码二维码,纯 Java,不依赖 Google Play 服务。Copyright ZXing authors. https://github.com/zxing/zxing"),
         Entry("commonmark-java", "BSD-2-Clause", "版本 0.30.1(含表格、删除线扩展),把回答里的 Markdown 解析成结构后显示。Copyright (c) 2015, Atlassian Pty Ltd. https://github.com/commonmark/commonmark-java"),
     )
 }
