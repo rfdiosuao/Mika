@@ -40,10 +40,29 @@ internal object LomPayload {
     }
 }
 
-/** 按顺序问多组方法,第一个认领的回答;都不认返回 null(统一的 `remote.method_unknown`)。 */
-class LomMethodSet(private vararg val parts: LomMethods) : LomMethods {
+/**
+ * 按顺序问多组方法,第一个认领的回答;都不认返回 null(统一的 `remote.method_unknown`)。
+ * 同时回答 `device.capabilities`(公开文档 07 §6):`methods` 由各组实际认领的方法合并而来,不手写清单;
+ * [limits] 是可选的数值上限(键名 `<方法>.<含义>`)。
+ */
+class LomMethodSet(private val limits: Map<String, Long>, private vararg val parts: LomMethods) : LomMethods {
+    constructor(vararg parts: LomMethods) : this(emptyMap(), *parts)
+
+    override val methods: Set<String> = parts.flatMapTo(sortedSetOf(CAPABILITIES)) { it.methods }
+
     override fun call(method: String, payload: String, sender: String): String? {
+        if (method == CAPABILITIES) return capabilities()
         for (p in parts) p.call(method, payload, sender)?.let { return it }
         return null
+    }
+
+    private fun capabilities(): String = LomPayload.obj(
+        "version" to 1,
+        "methods" to methods.toList(),
+        *(if (limits.isEmpty()) emptyArray() else arrayOf("limits" to LomPayload.jobj(*limits.toSortedMap().toList().toTypedArray()))),
+    )
+
+    companion object {
+        const val CAPABILITIES = "device.capabilities"
     }
 }

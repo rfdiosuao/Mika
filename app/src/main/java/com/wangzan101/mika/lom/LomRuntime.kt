@@ -17,6 +17,7 @@ import com.wangzan101.mika.core.lom.LomAppsPort
 import com.wangzan101.mika.core.lom.LomBasicMethods
 import com.wangzan101.mika.core.lom.LomChatMethods
 import com.wangzan101.mika.core.lom.LomFileMethods
+import com.wangzan101.mika.core.remote.RemoteTaskService
 import com.wangzan101.mika.core.lom.LomScreenMethods
 import com.wangzan101.mika.core.lom.LomDeviceMethods
 import com.wangzan101.mika.core.lom.LomKv
@@ -63,6 +64,10 @@ class LomRuntime(private val context: Context) {
 
     /** 本版本接入的方法集合;没认领的方法由处理器统一回 `remote.method_unknown`。 */
     private fun methods(): LomMethods = LomMethodSet(
+        mapOf(
+            "chat.send.max_text_chars" to RemoteTaskService.MAX_GOAL.toLong(), // 与 chat.send 实际校验的上限同源
+            "file.max_bytes" to LomFileMethods.MAX_FILE,
+        ),
         modelMethods,
         LomDeviceMethods(kv, AndroidApps(context)),
         LomChatMethods(AndroidChat(context.applicationContext as com.wangzan101.mika.MikaApp), kv, modelReady = { modelMethods.hasModel(it) }),

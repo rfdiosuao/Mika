@@ -16,6 +16,8 @@ class LomDeviceMethods(
     private val apps: LomAppsPort,
     private val clock: () -> Long = System::currentTimeMillis,
 ) : LomMethods {
+    override val methods = setOf("device.rename", "apps.list")
+
     override fun call(method: String, payload: String, sender: String): String? = when (method) {
         "device.rename" -> rename(payload, sender)
         "apps.list" -> list()

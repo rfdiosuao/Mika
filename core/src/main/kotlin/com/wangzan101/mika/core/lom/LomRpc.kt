@@ -11,6 +11,12 @@ fun interface LomMethods {
     /** @param payload 请求载荷的 JSON 文本;@param sender 发送方桌面的公钥串(按它隔离状态)。 */
     fun call(method: String, payload: String, sender: String): String?
 
+    /**
+     * 这组实现认领的全部方法名。`device.capabilities` 据此自动生成清单,不另写一份;
+     * 实现新增或删除方法时必须同步这里(LomCapabilitiesTest 会把每个方法逐个探一遍,不一致就失败)。
+     */
+    val methods: Set<String> get() = emptySet()
+
     companion object {
         /** 一个方法都不支持。 */
         val NONE = LomMethods { _, _, _ -> null }
@@ -108,6 +114,8 @@ class LomBasicMethods(
     private val clock: () -> Long = System::currentTimeMillis,
 ) : LomMethods {
     class DeviceStatus(val battery: String, val network: String)
+
+    override val methods = setOf("document.list", "document.read", "schedule.list", "device.status")
 
     override fun call(method: String, payload: String, sender: String): String? = when (method) {
         "document.list" -> """{"items":[]}"""

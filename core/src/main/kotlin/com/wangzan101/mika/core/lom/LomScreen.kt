@@ -55,6 +55,8 @@ class LomScreenMethods(
 ) : LomMethods {
     @Volatile private var lastShot = 0L
 
+    override val methods = setOf("screen.capture", "screen.tree", "screen.control")
+
     override fun call(method: String, payload: String, sender: String): String? = when (method) {
         "screen.capture" -> capture(LomPayload.parse(payload, "screen.invalid_request"))
         "screen.tree" -> tree()
