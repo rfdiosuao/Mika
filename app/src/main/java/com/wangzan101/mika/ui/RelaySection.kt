@@ -38,6 +38,7 @@ internal fun RelaySection(runtime: McpRuntime, mcp: Boolean, onCopy: (String) ->
     val config by runtime.relaySettings.config.collectAsState()
     val state by runtime.relayState.collectAsState()
     val scope = rememberCoroutineScope()
+    val lomRuntime = (androidx.compose.ui.platform.LocalContext.current.applicationContext as com.wangzan101.mika.MikaApp).lom
     var busy by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
     fun change(action: suspend () -> Unit) {
@@ -63,7 +64,8 @@ internal fun RelaySection(runtime: McpRuntime, mcp: Boolean, onCopy: (String) ->
                 withContext(Dispatchers.Main) { onCopy(text) }
             }
         } }, mcp = mcp,
-        onCopyToken = { change { val token = runtime.settings.token(); withContext(Dispatchers.Main) { onCopy(token) } } })
+        onCopyToken = { change { val token = runtime.settings.token(); withContext(Dispatchers.Main) { onCopy(token) } } },
+        onScanLom = { lomRuntime.requestPairScreen() })
 }
 
 /** 纯展示与用户动作回调,测试不依赖真实网关。配对码不进可恢复状态;旧令牌不显示。 */
@@ -71,7 +73,7 @@ internal fun RelaySection(runtime: McpRuntime, mcp: Boolean, onCopy: (String) ->
 internal fun RelayControls(config: RelayConfig, state: RelayState, busy: Boolean, failed: Boolean,
     onPair: (String, String) -> Unit, onEnabled: (Boolean) -> Unit, onUnpair: () -> Unit,
     onCopyAddress: () -> Unit, onCopyConfig: () -> Unit, mcp: Boolean = true, onCopyToken: () -> Unit = {},
-    onDeviceAccess: (Boolean) -> Unit = {}) {
+    onDeviceAccess: (Boolean) -> Unit = {}, onScanLom: (() -> Unit)? = null) {
     var gateway by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
     var confirm by remember { mutableStateOf(false) }
@@ -87,6 +89,9 @@ internal fun RelayControls(config: RelayConfig, state: RelayState, busy: Boolean
                     onPair(gateway.trim(), code.trim()); code = ""
                 }, size = ButtonSize.Small, enabled = !busy && code.trim().length in 8..64 && runCatching { RelayGateway.parse(gateway) }.isSuccess,
                     modifier = Modifier.testTag("relay-pair"))
+                // Lom 版新增:和「配对网关」走不同的协议,扫麓鸣电脑上的二维码
+                if (onScanLom != null) MikaButton(LomCopy.SCAN_BUTTON, onScanLom, kind = ButtonKind.Tonal, size = ButtonSize.Small,
+                    enabled = !busy, modifier = Modifier.testTag("lom-scan"))
             }
         }
     } else {

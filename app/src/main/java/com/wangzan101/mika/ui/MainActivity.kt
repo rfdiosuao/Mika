@@ -43,6 +43,9 @@ import com.wangzan101.mika.cap.web.WebSites
 import com.wangzan101.mika.browser.UserBrowser
 import com.wangzan101.mika.BuildConfig
 import com.wangzan101.mika.MikaApp
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import com.wangzan101.mika.ui.components.MikaDialog
 import com.wangzan101.mika.about.Diagnostics
 import com.wangzan101.mika.about.DiagnosticsCollector
 import com.wangzan101.mika.about.MikaLinks
@@ -82,6 +85,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         requestedConversation = intent.getStringExtra(EXTRA_OPEN_CONVERSATION)
+        // 冷启动时由 lom://pair 深链打开;转屏重建时不重复处理
+        if (savedInstanceState == null) handleLomLink(intent)
         monitor = SystemStatusMonitor(this, PhoneServices.of(this).shellControl)
         val store = ProviderStore.get(this)
         setContent {
@@ -101,6 +106,16 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         requestedConversation = intent.getStringExtra(EXTRA_OPEN_CONVERSATION)
+        handleLomLink(intent)
+    }
+
+    /** 麓鸣配对深链:内容当不可信输入,交给配对流程走完整校验,并停在「确认连接」页等用户点击。链接不进日志。 */
+    private fun handleLomLink(intent: Intent) {
+        val data = intent.data ?: return
+        if (intent.action != Intent.ACTION_VIEW || data.scheme != "lom") return
+        (application as MikaApp).lom.handleDeepLink(data.toString())
+        // 消费掉,避免重建后再次处理
+        intent.data = null
     }
 
     override fun onStart() {
@@ -110,6 +125,8 @@ class MainActivity : ComponentActivity() {
         (application as MikaApp).updates.autoCheckInBackground()
         // 电脑连接开着、服务却不在(被系统停过、从后台没能起来):界面在前台时补起来
         (application as MikaApp).mcp.ensureRunning()
+        // 已对接麓鸣:服务不在就补起来,并立刻重连
+        (application as MikaApp).lom.also { it.ensureRunning(); it.relay.reconnectNow() }
     }
 
     override fun onResume() {
@@ -268,6 +285,10 @@ private fun MikaRoot(store: ProviderStore, monitor: SystemStatusMonitor, activit
         if (onboarding == null) Onboarding.start(onboardingInputs())?.let(::goOnboarding)
     }
     val phoneSetupNeeded by phoneSetup.needed.collectAsState()
+    // 设置里的按钮、配置模型页的入口、深链:都要求打开同一个麓鸣配对页
+    val lomOpen by app.lom.openPair.collectAsState()
+    LaunchedEffect(lomOpen) { if (lomOpen > 0) nav.push(Route.LomPair) }
+    val lomRevoked by app.lom.revokedNotice.collectAsState()
     // 页面有自己的返回处理时(设置页里的子页、侧栏)由它们先接;这里只管退回上一页
     BackHandler(enabled = nav.canGoBack) { nav.back() }
     val back: () -> Unit = { nav.back() }
@@ -347,6 +368,7 @@ private fun MikaRoot(store: ProviderStore, monitor: SystemStatusMonitor, activit
                 updateVersion = updateState.update?.version, onOpenAbout = { nav.push(Route.About) },
                 mcpServers = app.mcpServers)
         }
+        Route.LomPair -> LomPairScreen(onBack = back)
         Route.Models -> ModelsScreen(store, onBack = back, onOpenSpeech = { nav.push(Route.SpeechModel) }, onOpenUsage = { nav.push(Route.Usage) })
         Route.Usage -> UsageScreen(app.usage, store.providers, onBack = back)
         Route.SpeechModel -> SpeechModelScreen(store, onBack = back)
@@ -434,4 +456,10 @@ private fun MikaRoot(store: ProviderStore, monitor: SystemStatusMonitor, activit
             nav.reset()
         })
     }
+    if (lomRevoked) MikaDialog(
+        onDismissRequest = { app.lom.acknowledgeRevoked() },
+        title = { Text(LomCopy.REVOKED_TITLE) }, text = { Text(LomCopy.REVOKED_BODY) },
+        confirmButton = { TextButton({ app.lom.acknowledgeRevoked(); app.lom.session.reset(); app.lom.requestPairScreen() }) { Text(LomCopy.REVOKED_RESCAN) } },
+        dismissButton = { TextButton({ app.lom.acknowledgeRevoked() }) { Text(LomCopy.REVOKED_OK) } },
+    )
 }

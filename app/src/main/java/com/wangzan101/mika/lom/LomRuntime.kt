@@ -1,0 +1,148 @@
+package com.wangzan101.mika.lom
+
+import android.content.Context
+import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.os.BatteryManager
+import android.os.Build
+import android.provider.Settings
+import android.util.Log
+import com.wangzan101.mika.BuildConfig
+import com.wangzan101.mika.core.lom.EncryptedFileLomStore
+import com.wangzan101.mika.core.lom.FileReplayStore
+import com.wangzan101.mika.core.lom.LomBasicMethods
+import com.wangzan101.mika.core.lom.LomCloud
+import com.wangzan101.mika.core.lom.LomDeviceInfo
+import com.wangzan101.mika.core.lom.LomPaired
+import com.wangzan101.mika.core.lom.LomPairingFlow
+import com.wangzan101.mika.core.lom.LomRelay
+import com.wangzan101.mika.core.lom.LomRelayState
+import com.wangzan101.mika.core.lom.LomRpcProcessor
+import com.wangzan101.mika.core.lom.LomStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
+import java.io.File
+
+/**
+ * 麓鸣接入在 App 里的总装:身份与配对存储(Keystore 包裹)、配对流程、中转连接、RPC 处理器。
+ * 配对页(扫码/相册/深链/配对码)、设置里的管理页、前台服务都只和它打交道。
+ */
+class LomRuntime(private val context: Context) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val dir = File(context.noBackupFilesDir, "lom")
+
+    val store: LomStore = EncryptedFileLomStore(File(dir, "state.bin"), LomKeystoreBox())
+    private val cloud = LomCloud(OkHttpClient())
+    private val flow = LomPairingFlow(cloud, store, ::deviceInfo)
+    private val processor = LomRpcProcessor(
+        identity = { store.identity() },
+        trusted = { store.pairing()?.trustedKeys.orEmpty() },
+        replay = FileReplayStore(File(dir, "replay.log")),
+        methods = LomBasicMethods(status = ::deviceStatus),
+        onDrop = { Log.d(TAG, "envelope dropped: $it") }, // 只有内部原因码,没有任何内容
+    )
+    val relay = LomRelay(cloud, store, processor, scope, log = { Log.d(TAG, it) })
+
+    /** 当前配对;null 表示未配对。 */
+    val paired: StateFlow<LomPaired?> get() = store.state
+    val relayState: StateFlow<LomRelayState> get() = relay.state
+    val session = LomSession(flow, scope) { ensureRunning() }
+
+    private val _revokedNotice = MutableStateFlow(false)
+    /** 被桌面移除/凭据失效后,界面要提示一次「已解除配对,请重新扫码」。 */
+    val revokedNotice: StateFlow<Boolean> = _revokedNotice
+
+    /** 有人要求打开配对页(设置里的按钮、配置模型页的入口、深链);界面监听后跳转。 */
+    private val _openPair = MutableStateFlow(0)
+    val openPair: StateFlow<Int> = _openPair
+
+    init {
+        scope.launch {
+            relay.state.collect { s ->
+                if (s == LomRelayState.Revoked) {
+                    _revokedNotice.value = true
+                    context.stopService(Intent(context, LomService::class.java))
+                }
+            }
+        }
+    }
+
+    fun requestPairScreen() { _openPair.value = _openPair.value + 1 }
+
+    /** 深链 `lom://pair?…` 进来:交给配对流程,并要求打开配对页。链接内容不进日志。 */
+    fun handleDeepLink(text: String) {
+        session.submitLink(text)
+        requestPairScreen()
+    }
+
+    fun acknowledgeRevoked() {
+        _revokedNotice.value = false
+        relay.acknowledgeRevoked()
+    }
+
+    /** 已配对就确保前台服务在跑(被系统停过、从后台没起来时,界面在前台补起)。 */
+    fun ensureRunning() {
+        if (store.pairing() == null) return
+        runCatching { context.startForegroundService(Intent(context, LomService::class.java)) }
+            .onFailure { Log.w(TAG, "could not start Lom service", it) }
+    }
+
+    /** 解除配对:通知云端并清除本地。返回 false 表示云端没通知上(本地已清除)。 */
+    suspend fun unpair(): Boolean {
+        relay.stop()
+        val notified = flow.unpair()
+        context.stopService(Intent(context, LomService::class.java))
+        return notified
+    }
+
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+
+    /** 网络恢复/切换时不等退避立刻重连(公开文档 05 §5)。由服务在运行期间注册。 */
+    fun watchNetwork() {
+        if (networkCallback != null) return
+        val cm = context.getSystemService(ConnectivityManager::class.java) ?: return
+        val cb = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) { relay.reconnectNow() }
+        }
+        networkCallback = cb
+        runCatching { cm.registerDefaultNetworkCallback(cb) }.onFailure { networkCallback = null }
+    }
+
+    fun unwatchNetwork() {
+        val cb = networkCallback ?: return
+        networkCallback = null
+        runCatching { context.getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(cb) }
+    }
+
+    private fun deviceInfo(): LomDeviceInfo {
+        val name = runCatching { Settings.Global.getString(context.contentResolver, "device_name") }.getOrNull().orEmpty()
+        return LomDeviceInfo(name.ifBlank { Build.MODEL }, Build.MODEL, "Android ${Build.VERSION.RELEASE}", BuildConfig.VERSION_NAME)
+    }
+
+    /** 只读采样,不编造:拿不到就报未知。 */
+    private fun deviceStatus(): LomBasicMethods.DeviceStatus {
+        val battery = runCatching {
+            context.getSystemService(BatteryManager::class.java).getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+        }.getOrNull()?.takeIf { it in 0..100 }?.toString().orEmpty()
+        val cm = context.getSystemService(ConnectivityManager::class.java)
+        val caps = runCatching { cm?.getNetworkCapabilities(cm.activeNetwork) }.getOrNull()
+        val network = when {
+            cm == null -> "unknown"
+            caps == null -> "offline"
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "wifi"
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "cellular"
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "ethernet"
+            else -> "unknown"
+        }
+        return LomBasicMethods.DeviceStatus(battery, network)
+    }
+
+    private companion object { const val TAG = "MikaLom" }
+}

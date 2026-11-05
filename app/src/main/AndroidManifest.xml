@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- 按住说话时录音，转成文字。 -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- 扫码对接麓鸣:取景扫二维码。按需申请,拒绝后还能从相册选二维码图片或输入配对码 -->
+    <uses-permission android:name="android.permission.CAMERA" />
     <!-- 用户在关于页下载新版后，交给系统安装器确认覆盖安装。 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- 沙箱联网时读当前网络的 DNS 服务器 -->
@@ -99,6 +101,13 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- 麓鸣配对深链 lom://pair?…:系统相机、扫码工具、浏览器点链接都会进来,内容一律当不可信输入 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="lom" android:host="pair" />
+            </intent-filter>
         </activity>
 
         <!-- 通知里接管按钮的落点:从通知启动 Activity 才会收起通知栏,让用户直接看到挪到主屏的 App -->
@@ -176,6 +185,16 @@
         </service>
 
         <!-- 用 ChatGPT 登录期间:用户在浏览器里登录时撑住进程,本机回调才有人接;登录一结束就停 -->
+        <!-- 已对接麓鸣期间保持到云端中转的出站 WebSocket,让电脑的请求能送达手机 -->
+        <service
+            android:name=".lom.LomService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps an outbound connection to the relay of the Lom desktop the user paired with, so requests from that desktop can reach the phone" />
+        </service>
+
         <service
             android:name=".settings.ChatGptSignInService"
             android:exported="false"

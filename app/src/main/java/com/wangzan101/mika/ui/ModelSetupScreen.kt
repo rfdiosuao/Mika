@@ -334,6 +334,7 @@ private fun ProvidersSection(ui: ModelSetupUi, actions: ModelSetupActions) {
             }
         }
     }
+    LomModelRow()
     ui.probeNote?.let { FooterNote(it, Modifier.testTag("setup-probe-note"), color = c.warn) }
     // 刚存下的那家一个模型都没试通过:直接去选主模型(选的时候先试调用)
     if (ui.pickToProbe != null && ui.roles.main == null) {

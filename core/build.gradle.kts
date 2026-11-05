@@ -35,6 +35,10 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.commons.compress)
+    // 麓鸣接入:X25519 / Ed25519 / HKDF / ChaCha20-Poly1305 的轻量实现(安卓 11 的系统库不齐全,不依赖平台提供者)
+    implementation(libs.bouncycastle)
+    // 二维码解码(相册图片、相机帧):纯 Java,JVM 测试里也能用
+    implementation(libs.zxing.core)
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver)
     testImplementation(libs.kotlinx.coroutines.test)

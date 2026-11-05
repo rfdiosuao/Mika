@@ -141,6 +141,7 @@ The Apache Software Foundation (https://www.apache.org/).
     `startup:startup-runtime`:1.1.1;`concurrent:concurrent-futures`:1.1.0;`autofill`:1.0.0;
     `customview:customview-poolingcontainer`:1.0.0;`graphics:graphics-path`:1.0.1;`interpolator`:1.0.0;
     `tracing`:1.0.0;`versionedparcelable`:1.1.1;`webkit:webkit`:1.12.1(内置浏览器)
+  - `camera:camera-core`、`camera-camera2`、`camera-lifecycle`、`camera-view`:1.4.2(扫码对接麓鸣的取景与帧分析;其传递依赖随版本解析)
 - Usage: 界面与系统组件库,打进 APK。
 
 ## PRoot
@@ -237,3 +238,39 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
+
+## Bouncy Castle
+
+- Project: https://www.bouncycastle.org/
+- Artifact: `org.bouncycastle:bcprov-jdk18on:1.80`
+- License: MIT(Bouncy Castle License)
+- Usage: 以库的形式依赖(`core/src/main/kotlin/com/wangzan101/mika/core/lom/LomCrypto.kt`),
+  只用其轻量密码学接口做麓鸣接入协议的 X25519、Ed25519、HKDF-SHA256 与 ChaCha20-Poly1305,不注册 JCA 提供者。
+- NOTICE:
+
+```
+Copyright (c) 2000 - 2025 The Legion of the Bouncy Castle Inc. (https://www.bouncycastle.org)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software
+and associated documentation files (the "Software"), to deal in the Software without restriction,
+including without limitation the rights to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or
+substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+## ZXing
+
+- Project: https://github.com/zxing/zxing
+- Artifact: `com.google.zxing:core:3.5.3`
+- License: Apache-2.0
+- Usage: 以库的形式依赖(`core/src/main/kotlin/com/wangzan101/mika/core/lom/LomQrDecoder.kt`),
+  扫码对接麓鸣时解码相机帧与相册图片里的二维码;纯 Java,不依赖 Google Play 服务。

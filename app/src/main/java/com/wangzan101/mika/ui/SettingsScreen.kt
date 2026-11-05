@@ -60,7 +60,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** 设置里能进入的子页面;[Home] 是设置首页,[Advanced] 集中放置连接、维护和工程能力。 */
-private enum class SettingsPage { Home, Advanced, AppAccess, PhoneOps, DuringWork, Capsule, Language, Notifications, Sandbox, Recovery, SelfCheck, ComputerAccess, McpServers, Developer, RunStats }
+private enum class SettingsPage { Home, Advanced, AppAccess, PhoneOps, DuringWork, Capsule, Language, Notifications, Sandbox, Recovery, SelfCheck, ComputerAccess, McpServers, Developer, RunStats, Lom }
 
 /**
  * 设置页:总状态卡 + 常用 / 我的数据 / 其他。高级与其他只增加一层,各子页返回来时的页面。
@@ -140,7 +140,7 @@ fun SettingsScreen(
             SettingsPage.RunStats -> SettingsPage.Developer
             SettingsPage.SelfCheck -> SettingsPage.Recovery
             SettingsPage.Sandbox, SettingsPage.Recovery, SettingsPage.ComputerAccess,
-            SettingsPage.McpServers, SettingsPage.Developer -> SettingsPage.Advanced
+            SettingsPage.McpServers, SettingsPage.Developer, SettingsPage.Lom -> SettingsPage.Advanced
             else -> SettingsPage.Home
         }
     }
@@ -168,6 +168,7 @@ fun SettingsScreen(
             sandbox = sandboxStatus, onOpenSandbox = { page = SettingsPage.Sandbox },
             showRecovery = status.sdkInt >= Prerequisites.MIN_SDK, onOpenRecovery = { page = SettingsPage.Recovery },
             computerAccess = mcpOn, onOpenComputerAccess = { page = SettingsPage.ComputerAccess },
+            onOpenLom = { page = SettingsPage.Lom },
             mcpServersCount = mcpServers?.servers?.value?.size, onOpenMcpServers = { page = SettingsPage.McpServers },
             showDeveloper = showDeveloper, onOpenDeveloper = { page = SettingsPage.Developer },
             onBack = toHome,
@@ -194,6 +195,7 @@ fun SettingsScreen(
         SettingsPage.SelfCheck -> SelfCheckScreen(status, onBack = back)
         SettingsPage.ComputerAccess -> McpScreen(mcp, onBack = toAdvanced)
         SettingsPage.McpServers -> mcpServers?.let { McpServersScreen(it, onBack = toAdvanced) }
+        SettingsPage.Lom -> LomManageScreen(onBack = toAdvanced, onScan = { (context.applicationContext as com.wangzan101.mika.MikaApp).lom.requestPairScreen() })
         SettingsPage.Developer -> DeveloperOptionsScreen(
             speed, onSpeed = { flags.setSpeed(it); speed = it }, onBack = toAdvanced,
             grounding = visionConfig?.let { GroundingSetting(it.model, it.capabilities.groundingVerified) },
@@ -323,6 +325,7 @@ fun AdvancedSettingsContent(
     onOpenRecovery: () -> Unit = {},
     computerAccess: Boolean? = null,
     onOpenComputerAccess: () -> Unit = {},
+    onOpenLom: (() -> Unit)? = null,
     mcpServersCount: Int? = null,
     onOpenMcpServers: () -> Unit = {},
     showDeveloper: Boolean = false,
@@ -330,7 +333,7 @@ fun AdvancedSettingsContent(
 ) {
     PageScaffold(stringResource(R.string.settings_advanced), onBack) {
         val sandboxRow = sandbox?.takeIf { it !is SandboxStatus.Unsupported }
-        if (proxy != null || sandboxRow != null || computerAccess != null || mcpServersCount != null) {
+        if (proxy != null || sandboxRow != null || computerAccess != null || mcpServersCount != null || onOpenLom != null) {
             GroupLabel(stringResource(R.string.settings_connections))
             GroupCard {
                 var first = true
@@ -349,6 +352,14 @@ fun AdvancedSettingsContent(
                 computerAccess?.let { on ->
                     ListRow(MikaIcons.Desktop, stringResource(R.string.mcp_title), first = take(), onClick = onOpenComputerAccess) {
                         RowValue(stringResource(if (on) R.string.state_on else R.string.state_off)); RowChevron()
+                    }
+                }
+                onOpenLom?.let { open ->
+                    // Lom 版新增:已对接的麓鸣电脑与解除配对
+                    val lom = (LocalContext.current.applicationContext as? com.wangzan101.mika.MikaApp)?.lom
+                    val paired = lom?.paired?.collectAsState()?.value
+                    ListRow(MikaIcons.Desktop, LomCopy.SETTINGS_ROW, first = take(), onClick = open) {
+                        RowValue(if (paired == null) LomCopy.NOT_PAIRED else LomCopy.PAIRED); RowChevron()
                     }
                 }
                 mcpServersCount?.let { count ->

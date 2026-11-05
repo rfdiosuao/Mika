@@ -98,6 +98,11 @@ dependencies {
     // 两种识别模型都随 APK 安装；首次使用不依赖 Play 服务下载。
     implementation(libs.mlkit.text.recognition)
     implementation(libs.mlkit.text.recognition.chinese)
+    // 扫码对接麓鸣:CameraX 取景 + 分析帧(Apache-2.0);二维码解码用 core 里的 ZXing
+    implementation(libs.camerax.core)
+    implementation(libs.camerax.camera2)
+    implementation(libs.camerax.lifecycle)
+    implementation(libs.camerax.view)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
