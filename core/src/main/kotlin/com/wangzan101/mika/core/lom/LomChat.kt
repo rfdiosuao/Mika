@@ -54,6 +54,8 @@ class LomChatMethods(
     private val clock: () -> Long = System::currentTimeMillis,
     private val sleep: (Long) -> Unit = Thread::sleep,
 ) : LomMethods {
+    override val methods = setOf("chat.send", "chat.read", "chat.list", "chat.cancel", "chat.rename", "chat.pin", "chat.delete")
+
     override fun call(method: String, payload: String, sender: String): String? = when (method) {
         "chat.send" -> send(LomPayload.parse(payload, "chat.invalid_id"), sender)
         "chat.read" -> read(LomPayload.parse(payload, "chat.session_missing"), sender)
@@ -268,7 +270,7 @@ class LomChatMethods(
         const val RECEIPT = "chat.r."
         const val MAX_TEXT_BYTES = 60_000
         /** Mika 远程任务入口对单条消息的上限(字符);超过的明确拒绝,不截断。 */
-        const val MAX_GOAL = 4_000
+        const val MAX_GOAL = com.wangzan101.mika.core.remote.RemoteTaskService.MAX_GOAL
         const val MAX_FILES = 10
         const val MAX_TITLE = 200
         const val PAGE_READ = 50

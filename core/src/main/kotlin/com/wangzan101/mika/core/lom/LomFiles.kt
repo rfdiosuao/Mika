@@ -26,8 +26,10 @@ class LomFileMethods(
 ) : LomMethods {
     private class Meta(val id: String, val name: String, val mime: String, val size: Long, val sha256: String, val complete: Boolean)
 
+    override val methods = setOf("file.begin", "file.chunk", "file.finish", "file.status", "file.read", "file.list", "file.delete", "file.save_gallery")
+
     override fun call(method: String, payload: String, sender: String): String? {
-        if (method !in METHODS) return null
+        if (method !in methods) return null
         val dir = File(root, LomSender.key(sender))
         val o = LomPayload.parse(payload, "file.invalid_id")
         return synchronized(this) {
@@ -195,6 +197,5 @@ class LomFileMethods(
         const val CHUNK = 131_072
         private const val MAX_B64 = 4 * ((CHUNK + 2) / 3)
         const val QUOTA = 500L * 1024 * 1024
-        private val METHODS = setOf("file.begin", "file.chunk", "file.finish", "file.status", "file.read", "file.list", "file.delete", "file.save_gallery")
     }
 }

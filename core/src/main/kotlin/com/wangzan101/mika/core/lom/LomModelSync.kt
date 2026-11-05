@@ -24,8 +24,10 @@ interface LomModelPort {
  * 密钥只交给 [LomModelPort](进服务商存储的加密凭据库),这里不落盘、不记日志。
  */
 class LomModelMethods(private val port: LomModelPort, private val kv: LomKv, private val onChange: (String?) -> Unit = {}) : LomMethods {
+    override val methods = setOf("model.sync")
+
     override fun call(method: String, payload: String, sender: String): String? {
-        if (method != "model.sync") return null
+        if (method !in methods) return null
         val o = LomPayload.parse(payload, "model.invalid_config")
         val platform = LomPayload.str(o, "platform").orEmpty()
         if (platform !in PLATFORMS) throw LomException("model.unsupported_protocol")
