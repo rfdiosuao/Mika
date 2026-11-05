@@ -23,9 +23,11 @@ internal object LomPayload {
         when (it) { "true" -> true; "false" -> false; else -> null }
     }
 
-    fun obj(vararg pairs: Pair<String, Any?>): String = JsonObject(linkedMapOf<String, JsonElement>().also { m ->
+    fun jobj(vararg pairs: Pair<String, Any?>): JsonObject = JsonObject(linkedMapOf<String, JsonElement>().also { m ->
         pairs.forEach { (k, v) -> m[k] = element(v) }
-    }).toString()
+    })
+
+    fun obj(vararg pairs: Pair<String, Any?>): String = jobj(*pairs).toString()
 
     fun element(v: Any?): JsonElement = when (v) {
         null -> JsonNull
