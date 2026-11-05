@@ -85,16 +85,17 @@ internal fun stateText(s: LomRelayState): String = when (s) {
     else -> LomCopy.STATE_STOPPED
 }
 
-/** 「配置模型」页服务商列表下面的入口:扫码对接麓鸣,配对后使用麓鸣推送的模型。 */
+/** 「配置模型」页服务商列表下面的入口:扫码对接麓鸣,配对后使用麓鸣推送的模型(服务商名「麓鸣」)。 */
 @Composable
 internal fun LomModelRow() {
     val runtime = (LocalContext.current.applicationContext as? MikaApp)?.lom ?: return
     val paired by runtime.paired.collectAsState()
+    val model by runtime.modelName.collectAsState()
     val name = paired?.desktops?.firstOrNull()?.name
     GroupCard(Modifier.padding(top = 4.dp)) {
         ListRow(
             MikaIcons.Desktop, LomCopy.SCAN_BUTTON,
-            if (paired == null) LomCopy.MODEL_ROW_SUB else "${LomCopy.PAIRED}${if (name.isNullOrBlank()) "" else "：$name"}",
+            LomCopy.modelRowSub(paired != null, name, model),
             first = true, onClick = if (paired == null) ({ runtime.requestPairScreen() }) else null,
         )
     }

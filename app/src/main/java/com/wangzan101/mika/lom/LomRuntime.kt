@@ -12,7 +12,14 @@ import android.util.Log
 import com.wangzan101.mika.BuildConfig
 import com.wangzan101.mika.core.lom.EncryptedFileLomStore
 import com.wangzan101.mika.core.lom.FileReplayStore
+import com.wangzan101.mika.core.lom.EncryptedFileLomKv
+import com.wangzan101.mika.core.lom.LomAppsPort
 import com.wangzan101.mika.core.lom.LomBasicMethods
+import com.wangzan101.mika.core.lom.LomDeviceMethods
+import com.wangzan101.mika.core.lom.LomKv
+import com.wangzan101.mika.core.lom.LomMethodSet
+import com.wangzan101.mika.core.lom.LomMethods
+import com.wangzan101.mika.core.lom.LomModelMethods
 import com.wangzan101.mika.core.lom.LomCloud
 import com.wangzan101.mika.core.lom.LomDeviceInfo
 import com.wangzan101.mika.core.lom.LomPaired
@@ -41,11 +48,28 @@ class LomRuntime(private val context: Context) {
     val store: LomStore = EncryptedFileLomStore(File(dir, "state.bin"), LomKeystoreBox())
     private val cloud = LomCloud(OkHttpClient())
     private val flow = LomPairingFlow(cloud, store, ::deviceInfo)
+
+    /** 模型版本、设备名等小块状态,整份经 Keystore 包裹加密。 */
+    val kv: LomKv = EncryptedFileLomKv(File(dir, "kv.bin"), LomKeystoreBox())
+    private val _modelName = MutableStateFlow<String?>(null)
+    /** 「麓鸣」服务商当前用的模型名;还没收到电脑推送为 null。界面据此显示「等待电脑推送模型」。 */
+    val modelName: StateFlow<String?> = _modelName
+    val modelMethods: LomModelMethods by lazy {
+        LomModelMethods(LomProviderBridge((context.applicationContext as com.wangzan101.mika.MikaApp).providers, kv), kv) { _modelName.value = it }
+    }
+
+    /** 本版本接入的方法集合;没认领的方法由处理器统一回 `remote.method_unknown`。 */
+    private fun methods(): LomMethods = LomMethodSet(
+        modelMethods,
+        LomDeviceMethods(kv, AndroidApps(context)),
+        LomBasicMethods(status = ::deviceStatus),
+    )
+
     private val processor = LomRpcProcessor(
         identity = { store.identity() },
         trusted = { store.pairing()?.trustedKeys.orEmpty() },
         replay = FileReplayStore(File(dir, "replay.log")),
-        methods = LomBasicMethods(status = ::deviceStatus),
+        methods = methods(),
         onDrop = { Log.d(TAG, "envelope dropped: $it") }, // 只有内部原因码,没有任何内容
     )
     val relay = LomRelay(cloud, store, processor, scope, log = { Log.d(TAG, it) })
@@ -64,6 +88,13 @@ class LomRuntime(private val context: Context) {
     val openPair: StateFlow<Int> = _openPair
 
     init {
+        // 解除配对、被桌面移除或凭据失效(配对记录变空)时移除「麓鸣」服务商;启动时也核对一次,收拾上次没来得及清的
+        scope.launch {
+            store.state.collect { p ->
+                if (p == null) runCatching { modelMethods.clear() }.onFailure { Log.w(TAG, "could not remove Lom provider") }
+                else _modelName.value = if (modelMethods.hasModel(p.trustedKeys.firstOrNull().orEmpty())) currentModel() else null
+            }
+        }
         scope.launch {
             relay.state.collect { s ->
                 if (s == LomRelayState.Revoked) {
@@ -73,6 +104,9 @@ class LomRuntime(private val context: Context) {
             }
         }
     }
+
+    private fun currentModel(): String? = (context.applicationContext as com.wangzan101.mika.MikaApp).providers
+        .configs.value.firstOrNull { it.name == LomProviderBridge.NAME }?.model
 
     fun requestPairScreen() { _openPair.value = _openPair.value + 1 }
 

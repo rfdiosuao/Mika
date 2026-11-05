@@ -55,7 +55,14 @@ object LomCopy {
     const val UNPAIR_TITLE = "解除与麓鸣电脑的配对？"
     const val UNPAIR_BODY = "解除后这台电脑不能再向手机派活。手机上的对话和记忆都会保留。解除需要联网通知云端。"
     const val UNPAIR_NOT_NOTIFIED = "已在手机上解除配对，但没能通知云端。电脑上可能还显示这台手机，可以在电脑上移除它。"
-    const val PAIRED_NOTE = "桌面发来的请求目前都会回复「暂不支持」，功能会逐步接入。"
+    const val PAIRED_NOTE = "电脑可以查看这台手机的状态和应用列表、推送模型。不支持的功能会明确回复「暂不支持」，不会假装完成。"
+    const val MODEL_WAITING = "等待电脑推送模型"
+    /** 「配置模型」页入口的副标题:未对接/等待推送/已在使用。 */
+    fun modelRowSub(paired: Boolean, desktop: String?, model: String?): String = when {
+        !paired -> MODEL_ROW_SUB
+        model.isNullOrBlank() -> "$PAIRED${if (desktop.isNullOrBlank()) "" else "：$desktop"} · $MODEL_WAITING"
+        else -> "$PAIRED${if (desktop.isNullOrBlank()) "" else "：$desktop"} · 服务商「$NAME」使用 $model"
+    }
     const val MANAGE_EMPTY = "还没有对接麓鸣电脑。在电脑上的麓鸣添加手机，然后扫码对接。"
     const val ALREADY_PAIRED_SUB = "已经对接了一台电脑，需要先解除配对。"
     fun approvedAt(text: String) = "对接于 $text"
