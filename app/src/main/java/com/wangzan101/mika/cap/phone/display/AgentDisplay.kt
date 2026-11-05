@@ -49,6 +49,8 @@ class AgentDisplay(
     private var frameGeometry = DisplayFrameGeometry(bufferWidth, bufferHeight, Surface.ROTATION_0)
     private var lastProcessedAt = 0L
     private var pending = false
+    /** 最近一次收到帧的时刻(SystemClock.uptimeMillis);还没收到过为 0。画面新鲜度判定用(见 a11y.FrameFreshness)。 */
+    @Volatile private var frameArrivedAt = 0L
     @Volatile private var released = false
 
     private val paint = Paint(Paint.FILTER_BITMAP_FLAG)
@@ -99,6 +101,7 @@ class AgentDisplay(
                 }
                 bmp!!.copyPixelsFromBuffer(plane.buffer.rewind())
                 hasFrame = true
+                frameArrivedAt = SystemClock.uptimeMillis()
                 frameGeometry = capturedGeometry
                 _frames.value = uprightDisplayFrame(bmp, capturedGeometry, capturedGeometry.previewWidth(PREVIEW_SHORT_SIDE), paint)
             }
@@ -117,6 +120,9 @@ class AgentDisplay(
         }
     }
 
+    /** 最近一次收到帧的时刻;还没收到过为 null。 */
+    fun lastFrameAt(): Long? = frameArrivedAt.takeIf { it > 0 }
+
     /** OCR 使用原始尺寸的画面副本，避免 PNG 编码和解码；调用方负责 recycle。 */
     fun latestFrameBitmap(): Bitmap? = synchronized(frameLock) {
         val bmp = fullFrame
@@ -126,6 +132,7 @@ class AgentDisplay(
     fun release() {
         if (released) return
         released = true
+        frameArrivedAt = 0
         runCatching { shell.releaseDisplay(displayId) }
         closeLocal()
         _frames.value = null

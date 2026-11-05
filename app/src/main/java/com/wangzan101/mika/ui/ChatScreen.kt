@@ -222,7 +222,9 @@ fun ChatScreen(
     }
 
     // 返回聊天时同一条内容不重新滚动；新进展仅在跟随末尾时滚动。
+    // 目标行直接由当前 UI 状态计算:layoutInfo 还是上一帧的测量结果,发送后立即读它会滚到旧的末尾。
     val last = ui.exchanges.lastOrNull()
+    val rowCount = chatItemCount(ui.exchanges, kept, phoneSetupNeeded, hasBlocked = ui.blocked != null)
     val scrollMarker = "${ui.conversationId}:${ui.exchanges.size}:${last?.steps?.size}:${last?.steers?.size}:${last?.status?.hashCode()}:${ui.blocked?.hashCode()}"
     LaunchedEffect(scrollMarker) {
         if (previousScrollMarker == scrollMarker) return@LaunchedEffect
@@ -232,10 +234,9 @@ fun ChatScreen(
         previousConversation = ui.conversationId
         if (changedConversation) followingTail = true
         if (!firstEntry && !changedConversation && !followingTail) return@LaunchedEffect
-        val count = listState.layoutInfo.totalItemsCount
-        if (count > 0) {
-            if (firstEntry || changedConversation || reduceMotion) listState.scrollToItem(count - 1)
-            else listState.animateScrollToItem(count - 1)
+        if (rowCount > 0) {
+            if (firstEntry || changedConversation || reduceMotion) listState.scrollToItem(rowCount - 1)
+            else listState.animateScrollToItem(rowCount - 1)
         }
     }
     // 流式文字增长时跟住底部；用户主动向上翻看过程时不拉回去。
@@ -391,6 +392,7 @@ fun ChatScreen(
                 Toast.makeText(context, context.getString(R.string.pip_closed_hint), Toast.LENGTH_SHORT).show()
             },
             onReopen = vm::reopenPip,
+            onUnmute = vm::unmutePip,
             // 要你处理时点小窗:收起,滚到要你处理的那张卡片(在最后一问一答里,它后面只可能还有文件卡片和去设置那一行)
             onAttention = {
                 vm.attendPip()
@@ -570,7 +572,7 @@ internal fun withdrawableSteer(exchanges: List<Exchange>, key: String): SteerNot
     if (ex.status.isActive()) ex.steers.firstOrNull { key == "m$i-${it.id}" && it.state.unconsumed && !it.remote } else null
 }.firstOrNull()
 
-private fun ExchangeStatus.isActive() =
+internal fun ExchangeStatus.isActive() =
     this !is ExchangeStatus.Done && this !is ExchangeStatus.Failed && this !is ExchangeStatus.Cancelled
 
 /**

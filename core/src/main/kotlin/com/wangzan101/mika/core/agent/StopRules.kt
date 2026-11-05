@@ -69,6 +69,8 @@ internal fun userReason(e: ModelError): String = when (e) {
         "模型「${e.model.ifEmpty { "当前模型" }}」不支持调用工具,Mika 干活要靠工具。去设置 › 模型换一个会调用工具的模型。"
     is ModelError.ContextTooLong -> "对话内容超出了模型的上下文长度,请换用上下文更长的模型,或把任务拆小一些。"
     is ModelError.ContentRefused -> "模型拒绝处理该内容,请调整任务描述或换一个模型。"
+    is ModelError.ReasoningEffortRejected ->
+        "模型不接受所选的思考强度。服务端回复：${quoted(e.detail)}。请到设置 › 模型,把思考强度改为默认或服务端支持的档位。"
     is ModelError.RateLimited -> "模型服务限流,重试后仍然请求太频繁。请稍后再试,或检查账户的调用频率限制。"
     is ModelError.Network -> "连接模型服务失败,重试后仍然不通。请检查网络和 Base URL。"
     is ModelError.Proxy -> when (e.failure) {
