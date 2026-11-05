@@ -69,7 +69,7 @@ object Licenses {
         Entry("Alpine Linux", "各软件包各自的许可证", RUNTIME_NOTE),
         Entry("XZ for Java", "0BSD", "版本 1.10,首次启动时解压自带的运行环境。https://tukaani.org/xz/java.html"),
         Entry("Bouncy Castle", "MIT", "版本 1.80(bcprov-jdk18on),麓鸣接入用它做 X25519、Ed25519、HKDF 与 ChaCha20-Poly1305。Copyright (c) 2000 - 2025 The Legion of the Bouncy Castle Inc. https://www.bouncycastle.org/"),
-        Entry("ZXing", "Apache-2.0", "版本 3.5.3(core),扫码对接麓鸣时解码二维码,纯 Java,不依赖 Google Play 服务。Copyright ZXing authors. https://github.com/zxing/zxing"),
+        Entry("ZXing", "Apache-2.0", "版本 3.5.3(core),在本机生成微信绑定二维码，也用于扫码对接麓鸣时解码二维码；纯 Java，不依赖 Google Play 服务，不调用在线图片服务。Copyright ZXing authors. https://github.com/zxing/zxing"),
         Entry("commonmark-java", "BSD-2-Clause", "版本 0.30.1(含表格、删除线扩展),把回答里的 Markdown 解析成结构后显示。Copyright (c) 2015, Atlassian Pty Ltd. https://github.com/commonmark/commonmark-java"),
     )
 }
