@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -15,15 +17,40 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.wangzan101.mika"
+        // Lom 版独立包名:与原版 Mika(com.wangzan101.mika)可同时安装。namespace(Kotlin 包路径)不动,避免大面积改代码
+        applicationId = "top.heang.lom.mika"
         minSdk = 30
         targetSdk = 35
-        versionCode = 38
-        versionName = "0.1.37"
+        // Lom 版自己的版本序列,只增不减:0.1.37 的第 1 个 Lom 构建 = 1_037_001。与原版 Mika 的 versionCode 互不相干(包名不同)
+        versionCode = 1_037_001
+        versionName = "0.1.37-lom.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GIT_HASH", "\"$gitHash\"")
         // 关于页版本号后的 Beta 标记;出正式版时改成 false
         buildConfigField("boolean", "BETA", "true")
+        // 应用内检查更新读的发布接口。Lom 版不能读原作者仓库(那里的包是原版 Mika,装上去会变成另一个应用);
+        // Lom 版自己的更新源还没有,留空 = 不检查。有了再填 GitHub 发布页接口格式的地址。
+        buildConfigField("String", "UPDATE_API", "\"\"")
+    }
+
+    // 正式签名:密钥库放在仓库之外,路径和密码来自环境变量或不提交的 keystore.properties(见 .gitignore)。
+    // 没配置时 release 构建明确失败,绝不悄悄退回 debug 签名。
+    val signingProps = Properties().apply {
+        rootProject.file("keystore.properties").takeIf { it.isFile }?.inputStream()?.use { load(it) }
+    }
+    fun signing(key: String, env: String): String? = System.getenv(env)?.takeIf { it.isNotEmpty() } ?: signingProps.getProperty(key)
+    val releaseStore = signing("storeFile", "MIKA_KEYSTORE_FILE")
+    val releaseStorePassword = signing("storePassword", "MIKA_KEYSTORE_PASSWORD")
+    val releaseAlias = signing("keyAlias", "MIKA_KEY_ALIAS")
+    val releaseKeyPassword = signing("keyPassword", "MIKA_KEY_PASSWORD") ?: releaseStorePassword
+    val releaseSigningReady = listOf(releaseStore, releaseStorePassword, releaseAlias, releaseKeyPassword).all { !it.isNullOrEmpty() }
+    signingConfigs {
+        if (releaseSigningReady) create("lomRelease") {
+            storeFile = file(releaseStore!!)
+            storePassword = releaseStorePassword
+            keyAlias = releaseAlias
+            keyPassword = releaseKeyPassword
+        }
     }
 
     // 沙箱程序只有 arm64 版本(jniLibs/arm64-v8a);APK 不限 ABI,别的设备照常安装、显示「此设备不支持沙箱」。
@@ -54,6 +81,9 @@ android {
     sourceSets.getByName("androidTest").assets.srcDir(rootProject.file("eval/tasks"))
 
     buildTypes {
+        getByName("release") {
+            if (releaseSigningReady) signingConfig = signingConfigs.getByName("lomRelease")
+        }
         // 真机验收时并排安装,保留发行版和用户数据;默认构建标识不变。
         if (providers.gradleProperty("devInstall").isPresent) getByName("debug") {
             applicationIdSuffix = ".dev"
@@ -125,4 +155,12 @@ dependencies {
 // LicensesTest 读仓库的 licenses/THIRD_PARTY_NOTICES.md:让它参与测试的增量判断
 tasks.withType<Test>().configureEach {
     inputs.file(rootProject.file("licenses/THIRD_PARTY_NOTICES.md")).withPropertyName("thirdPartyNotices")
+}
+
+// release 构建没配好签名就失败,不产出未签名或 debug 签名的"正式包"
+gradle.taskGraph.whenReady {
+    if (allTasks.any { it.project == project && it.name.contains("Release") && (it.name.startsWith("assemble") || it.name.startsWith("package") || it.name.startsWith("bundle")) }) {
+        val ready = System.getenv("MIKA_KEYSTORE_FILE")?.isNotEmpty() == true || rootProject.file("keystore.properties").isFile
+        if (!ready) throw GradleException("release 构建需要正式签名:设置 MIKA_KEYSTORE_FILE/MIKA_KEYSTORE_PASSWORD/MIKA_KEY_ALIAS 环境变量,或提供不提交的 keystore.properties。不会退回 debug 签名。")
+    }
 }
