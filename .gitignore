@@ -21,3 +21,9 @@ CLAUDE.md
 __pycache__/
 *.py[cod]
 *.egg-info/
+
+# 发布签名(密钥库放在仓库之外;这里只是防止误提交)
+keystore.properties
+*.jks
+*.keystore
+*.p12

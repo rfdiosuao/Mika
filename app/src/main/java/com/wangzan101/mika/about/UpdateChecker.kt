@@ -59,7 +59,7 @@ class UpdateChecker(
     private val file: File,
     private val currentVersion: String,
     private val client: OkHttpClient = defaultClient(),
-    private val releaseApi: String = MikaLinks.LATEST_RELEASE_API,
+    private val releaseApi: String = com.wangzan101.mika.BuildConfig.UPDATE_API,
     private val now: () -> Long = System::currentTimeMillis,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     /** 本机支持的 ABI(Build.SUPPORTED_ABIS),用来挑发布里合适的 APK;为空时取全架构包。 */
@@ -112,7 +112,8 @@ class UpdateChecker(
     }
 
     /** GitHub 上最新的发布;没查到为空。 */
-    internal fun fetchLatest(): ReleaseInfo? = runCatching { Releases.fromGitHub(get(releaseApi), deviceAbis) }.getOrNull()
+    // Lom 版没有自己的更新源时(releaseApi 为空)不去查:原作者仓库发的是另一个包名的应用,不能当作本应用的更新
+    internal fun fetchLatest(): ReleaseInfo? = if (releaseApi.isEmpty()) null else runCatching { Releases.fromGitHub(get(releaseApi), deviceAbis) }.getOrNull()
 
     private fun get(url: String): String {
         val req = Request.Builder().url(url)
