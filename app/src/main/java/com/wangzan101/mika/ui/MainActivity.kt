@@ -288,6 +288,9 @@ private fun MikaRoot(store: ProviderStore, monitor: SystemStatusMonitor, activit
     // 设置里的按钮、配置模型页的入口、深链:都要求打开同一个麓鸣配对页
     val lomOpen by app.lom.openPair.collectAsState()
     LaunchedEffect(lomOpen) { if (lomOpen > 0) nav.push(Route.LomPair) }
+    // 侧栏「麓鸣电脑」入口:已对接显示电脑名,未对接显示通用名
+    val lomPaired by app.lom.paired.collectAsState()
+    val lomDrawerLabel = LomCopy.drawerLabel(lomPaired?.desktops?.firstOrNull()?.name)
     val lomRevoked by app.lom.revokedNotice.collectAsState()
     // 页面有自己的返回处理时(设置页里的子页、侧栏)由它们先接;这里只管退回上一页
     BackHandler(enabled = nav.canGoBack) { nav.back() }
@@ -332,6 +335,8 @@ private fun MikaRoot(store: ProviderStore, monitor: SystemStatusMonitor, activit
                 onBrowser = { nav.pushFromDrawer(Route.Browser) },
                 onScreens = { nav.pushFromDrawer(Route.Screens) },
                 onAbout = { nav.pushFromDrawer(Route.About) },
+                lomLabel = lomDrawerLabel,
+                onLom = { nav.pushFromDrawer(Route.LomPair) },
                 updateAvailable = AboutCopy.drawerDot(updateState),
                 reopen = nav.reopenDrawer,
                 onReopened = nav::drawerReopened,

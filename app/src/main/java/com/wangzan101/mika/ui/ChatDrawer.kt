@@ -212,6 +212,9 @@ fun ChatDrawer(
     onSettings: () -> Unit,
     onOpen: (DrawerConversation) -> Unit,
     onAbout: () -> Unit = {},
+    /** 侧栏「麓鸣电脑」入口:未对接时进扫码页,已对接时进已对接页。 */
+    lomLabel: String = LomCopy.SETTINGS_ROW,
+    onLom: () -> Unit = {},
     /** 有新版本:「关于 Mika」带小红点。 */
     aboutDot: Boolean = false,
     /** 长按一条存过的对话:在它原地弹出操作菜单(置顶、改名、删除);带上那一行在窗口里的位置和大小。 */
@@ -244,6 +247,7 @@ fun ChatDrawer(
             NavEntry(MikaIcons.Clock, stringResource(R.string.drawer_plans), onClick = onPlans)
             NavEntry(MikaIcons.Heart, stringResource(R.string.memory_and_skills), onClick = onMemory)
             NavEntry(MikaIcons.Globe, stringResource(R.string.drawer_browser), onClick = onBrowser)
+            NavEntry(MikaIcons.Desktop, lomLabel, Modifier.fillMaxWidth().testTag("drawer-lom"), onClick = onLom)
         }
         // 侧栏关着时列表只剩末尾那一项;打开时对话插在它前面,列表会按原来那一项停在最底下。最上面一项变了就回到顶上
         val list = rememberLazyListState()
@@ -489,6 +493,9 @@ fun ChatWithDrawer(
     onScreens: () -> Unit = {},
     onSettings: () -> Unit,
     onAbout: () -> Unit = {},
+    /** 侧栏「麓鸣电脑」入口的文案与动作(默认文案为通用名、点击无动作,仅作后备)。 */
+    lomLabel: String = LomCopy.SETTINGS_ROW,
+    onLom: () -> Unit = {},
     /** 有新版本:侧栏「关于 Mika」带小红点。 */
     updateAvailable: Boolean = false,
     /** 从侧栏进去的页面刚退回来:当场打开侧栏,回到进去之前的样子。 */
@@ -586,6 +593,8 @@ fun ChatWithDrawer(
                     onBrowser = { leave(onBrowser) },
                     onScreens = { leave(onScreens) },
                     onAbout = { leave(onAbout) },
+                    lomLabel = lomLabel,
+                    onLom = { leave(onLom) },
                     aboutDot = updateAvailable,
                     onActions = { item, bounds -> if (item.id != null) acting = item to bounds },
                     onOpen = { item ->
