@@ -32,4 +32,12 @@ class LomCopyTest {
         assertTrue(!LomCopy.notifBody("").contains("「"))
         assertTrue(LomCopy.doneBody("").contains("麓鸣电脑"))
     }
+
+    @Test
+    fun drawerLabelShowsDesktopNameOrGenericName() {
+        assertEquals("麓鸣电脑", LomCopy.drawerLabel(null))
+        assertEquals("麓鸣电脑", LomCopy.drawerLabel(""))
+        assertEquals("麓鸣电脑", LomCopy.drawerLabel("  "))
+        assertEquals("书房电脑", LomCopy.drawerLabel("书房电脑"))
+    }
 }

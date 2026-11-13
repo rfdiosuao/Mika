@@ -11,6 +11,8 @@ object LomCopy {
     const val PAGE_TITLE = "对接麓鸣"
     const val MANAGE_TITLE = "麓鸣电脑"
     const val SETTINGS_ROW = "麓鸣电脑"
+    /** 侧栏入口文案:已对接时显示电脑名,未对接/名字为空时显示通用名。 */
+    fun drawerLabel(desktopName: String?): String = if (desktopName.isNullOrBlank()) SETTINGS_ROW else desktopName
     const val PAIRED = "已对接"
     const val NOT_PAIRED = "未对接"
 
