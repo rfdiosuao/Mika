@@ -19,7 +19,7 @@ interface MemoryPersistence {
     fun save(items: List<MemoryItem>)
 }
 
-/** [code]:`sensitive`|`too_long`|`memory_full`|`not_found`|`unavailable`(记忆文件暂时读不出)。 */
+/** [code]:`sensitive`|`too_long`|`memory_full`|`not_found`|`duplicate_id`|`unavailable`(记忆文件暂时读不出)。 */
 class MemoryRejected(val code: String) : Exception(code)
 
 /**
@@ -31,6 +31,11 @@ class MemoryStore(
     val clock: () -> Long,
     private val ids: () -> String,
     val limit: Int = 500,
+    /**
+     * 用户让 Mika 记一件事、而内容里有用户自己没说过的具体值时:false(默认)不收;true 照存,来源记成 `inferred`
+     * (见 [MemorySource])。由「记忆与技能」里的开关定,每次保存时现读。
+     */
+    val inferenceAllowed: () -> Boolean = { false },
 ) {
     private val lock = Any()
     // 读不出(密钥库一时不可用)时先当空的用,但不许写:写了就会用空表盖掉真正的记忆文件
@@ -65,8 +70,10 @@ class MemoryStore(
         check(text, kws, source)?.let { return Result.failure(it) }
         if (_items.value.size >= limit) return Result.failure(MemoryRejected("memory_full"))
         val now = clock()
+        val id = ids()
+        if (_items.value.any { it.id == id }) return Result.failure(MemoryRejected("duplicate_id"))
         val item = MemoryItem(
-            id = ids(), kind = kind, content = text, keywords = kws, source = source,
+            id = id, kind = kind, content = text, keywords = kws, source = source,
             status = if (kind == MemoryKind.procedure) MemoryStatus.pending else MemoryStatus.active,
             createdAt = now, updatedAt = now,
         )
@@ -75,12 +82,14 @@ class MemoryStore(
     }
 
     /**
-     * [keywords]/[source] 为 null 时沿用原值。做法被新的非手写来源(模型提取、memory_save)改动后要重新批准;
+     * [keywords]/[source] 为 null 时沿用原值。做法被新的非手写来源(模型提取、memory_save / memory_edit)改动后要重新批准;
      * 用户在设置里改(manual)或不带来源的改动保持原状态。
      */
     fun update(id: String, content: String, keywords: List<String>?, source: MemorySource?): Result<Change.Updated> = synchronized(lock) {
         if (!reloadIfNeeded()) return Result.failure(MemoryRejected("unavailable"))
-        val before = _items.value.find { it.id == id } ?: return Result.failure(MemoryRejected("not_found"))
+        val matches = _items.value.filter { it.id == id }
+        if (matches.size > 1) return Result.failure(MemoryRejected("duplicate_id"))
+        val before = matches.singleOrNull() ?: return Result.failure(MemoryRejected("not_found"))
         val text = clean(content)
         val kws = keywords?.let(::cleanKeywords) ?: before.keywords
         val src = source ?: before.source
@@ -97,7 +106,9 @@ class MemoryStore(
 
     fun forget(id: String): Result<Change.Forgot> = synchronized(lock) {
         if (!reloadIfNeeded()) return Result.failure(MemoryRejected("unavailable"))
-        val before = _items.value.find { it.id == id } ?: return Result.failure(MemoryRejected("not_found"))
+        val matches = _items.value.filter { it.id == id }
+        if (matches.size > 1) return Result.failure(MemoryRejected("duplicate_id"))
+        val before = matches.singleOrNull() ?: return Result.failure(MemoryRejected("not_found"))
         commit(_items.value.filter { it.id != id })
         Result.success(remember { Change.Forgot(before, it) })
     }

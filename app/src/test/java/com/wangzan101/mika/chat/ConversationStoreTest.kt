@@ -4,14 +4,46 @@ import com.wangzan101.mika.core.agent.Turn
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 import kotlinx.coroutines.launch
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import java.io.File
+import java.io.IOException
 
 class ConversationStoreTest {
     @get:Rule val tmp = TemporaryFolder()
+
+    @Test fun failedFileDeletionKeepsHistoryAndAllowsRetry() {
+        val dir = tmp.newFolder()
+        val store = ConversationStore(dir)
+        store.append("a", Turn("问题", "结果", "succeeded"))
+        store.setCurrent(CurrentChat.Open("a"))
+        val blocker = File(dir, "a.json.tmp")
+        assertTrue(blocker.mkdir())
+        val child = File(blocker, "keep")
+        child.writeText("data")
+
+        assertThrows(IOException::class.java) { store.delete("a") }
+        assertEquals(CurrentChat.Open("a"), store.currentChat())
+        assertEquals(listOf("a"), ConversationStore(dir).list().map { it.id })
+        assertTrue(store.rename("a", "保留的对话"))
+        assertTrue(child.isFile)
+
+        assertTrue(child.delete())
+        assertTrue(blocker.delete())
+        store.delete("a")
+        assertTrue(ConversationStore(dir).list().isEmpty())
+        assertNull(store.currentChat())
+    }
 
     @Test fun persistsAcrossInstances() {
         val dir = tmp.newFolder("c")
@@ -20,7 +52,7 @@ class ConversationStoreTest {
         a.append(id, Turn("查天气", "晴", "succeeded"))
         a.append(id, Turn("订票", "验证码\n\"过不去\"", "failed"))
         val b = ConversationStore(dir)
-        assertEquals(listOf(Turn("查天气", "晴", "succeeded"), Turn("订票", "验证码\n\"过不去\"", "failed")), b.turns(id))
+        assertEquals(listOf(Turn("查天气", "晴", "succeeded"), Turn("订票", "验证码\n\"过不去\"", "failed")), b.turns(id).map { it.copy(atMs = null) })
         assertEquals(emptyList<Turn>(), b.turns(b.newConversation()))
         assertNotEquals(id, b.newConversation())
     }
@@ -34,6 +66,44 @@ class ConversationStoreTest {
         assertTrue(store.updatedAt(id)!! > 0)
         store.delete(id)
         assertEquals(null, store.updatedAt(id))
+    }
+
+    @Test fun appendStampsNewTurnsAndPreservesExplicitTimes() {
+        val dir = tmp.newFolder("times")
+        var now = 1_000L
+        val store = ConversationStore(dir, clock = { now })
+        store.append("c", Turn("一", "甲", "succeeded"))
+        now = 2_000L
+        store.append("c", Turn("二", "乙", "succeeded", atMs = 42L))
+        now = 3_000L
+        store.append("c", Turn("三", "丙", "succeeded"))
+        assertEquals(listOf(1_000L, 42L, 3_000L), ConversationStore(dir).turns("c").map { it.atMs })
+        val saved = Json.parseToJsonElement(java.io.File(dir, "c.json").readText()) as JsonArray
+        assertEquals(listOf("1000", "42", "3000"), saved.map { (it as JsonObject).getValue("atMs").toString() })
+    }
+
+    @Test fun oldTurnKeepsUnknownTimeWhenANewTurnIsAppended() {
+        val dir = tmp.newFolder("old")
+        java.io.File(dir, "c.json").writeText("""[{"userText":"旧","outcome":"好","status":"succeeded"}]""")
+        val store = ConversationStore(dir, clock = { 99L })
+        assertNull(store.turns("c").single().atMs)
+        store.append("c", Turn("新", "也好", "succeeded"))
+        val read = ConversationStore(dir).turns("c")
+        assertEquals(listOf(null, 99L), read.map { it.atMs })
+        val saved = Json.parseToJsonElement(java.io.File(dir, "c.json").readText()) as JsonArray
+        assertFalse("atMs" in (saved[0] as JsonObject))
+        assertEquals("99", (saved[1] as JsonObject).getValue("atMs").toString())
+    }
+
+    @Serializable
+    private data class LegacyTurn(val userText: String, val outcome: String, val status: String)
+
+    @Test fun oldReaderIgnoresTheNewOptionalTimeField() {
+        val dir = tmp.newFolder("compat")
+        ConversationStore(dir).append("c", Turn("问题", "答案", "succeeded", atMs = 123L))
+        val raw = java.io.File(dir, "c.json").readText()
+        val old = Json { ignoreUnknownKeys = true }.decodeFromString<List<LegacyTurn>>(raw)
+        assertEquals(listOf(LegacyTurn("问题", "答案", "succeeded")), old)
     }
 
     /** 留在后台运行的那一页(站点)和它后来关掉的原因跟着那一轮存下;没留页的轮次不写这两个字段。 */
@@ -71,6 +141,19 @@ class ConversationStoreTest {
         assertEquals(listOf(listOf("今天晴", ""), emptyList()), read.map { it.interruptedReplies })
         assertEquals(listOf("改成查明天", "顺便看看后天"), read.first().steers)
         assertFalse("interruptedReplies" in java.io.File(dir, "$id.json").readText().substringAfter("谢谢"))
+    }
+
+    /** 取消占位结果的来源跟着存下;后续摘要清掉来源,旧文件和普通轮次读出来为空。 */
+    @Test fun persistsOutcomeSystemType() {
+        val dir = tmp.newFolder("c")
+        val a = ConversationStore(dir)
+        val id = a.newConversation()
+        a.append(id, Turn("查资料", "已取消", "cancelled", runId = "r1", outcomeSystemType = "task_cancelled"))
+        a.append(id, Turn("谢谢", "已取消", "succeeded", runId = "r2"))
+        assertEquals(listOf("task_cancelled", null), ConversationStore(dir).turns(id).map { it.outcomeSystemType })
+        assertFalse("outcomeSystemType" in java.io.File(dir, "$id.json").readText().substringAfter("谢谢"))
+        a.updateTurn(id, "r1") { it.copy(outcome = "找到两篇", outcomeSystemType = null) }
+        assertEquals(null, ConversationStore(dir).turns(id).first().outcomeSystemType)
     }
 
     /** 插话之前已经说完的回复同样一一对应存下;没有时不写这个字段。 */
@@ -187,7 +270,7 @@ class ConversationStoreTest {
         val aside = dir.listFiles().orEmpty().filter { it.name.startsWith("x.json.corrupt-") }
         assertEquals(1, aside.size)
         assertEquals("{not json", aside.single().readText())
-        assertEquals(listOf(Turn("a", "b", "cancelled")), s.turns("x"))
+        assertEquals(listOf(Turn("a", "b", "cancelled")), s.turns("x").map { it.copy(atMs = null) })
         assertEquals(listOf("x"), s.list().map { it.id })
     }
 
@@ -208,7 +291,7 @@ class ConversationStoreTest {
     @Test fun unverifiedTurnKeepsItsNote() {
         val dir = tmp.newFolder()
         val id = ConversationStore(dir).let { s -> s.newConversation().also { s.append(it, Turn("查余额", "余额 10 元", "unverified", note = "防截屏")) } }
-        assertEquals(listOf(Turn("查余额", "余额 10 元", "unverified", note = "防截屏")), ConversationStore(dir).turns(id))
+        assertEquals(listOf(Turn("查余额", "余额 10 元", "unverified", note = "防截屏")), ConversationStore(dir).turns(id).map { it.copy(atMs = null) })
     }
 
     @Test fun turnKeepsItsRunId() {
@@ -341,13 +424,13 @@ class ConversationStoreTest {
         val dir = tmp.newFolder("c")
         val store = ConversationStore(dir)
         val source = store.newConversation()
-        store.append(source, Turn("一", "甲", "succeeded"))
-        store.append(source, Turn("二", "乙", "succeeded"))
-        store.append(source, Turn("三", "丙", "succeeded"))
+        store.append(source, Turn("一", "甲", "succeeded", atMs = 11L))
+        store.append(source, Turn("二", "乙", "succeeded", atMs = 22L))
+        store.append(source, Turn("三", "丙", "succeeded", atMs = 33L))
         val target = store.newConversation()
         assertTrue(store.branch(source, target, throughTurn = 1))
         assertEquals(
-            listOf(Turn("一", "甲", "succeeded"), Turn("二", "乙", "succeeded")),
+            listOf(Turn("一", "甲", "succeeded", atMs = 11L), Turn("二", "乙", "succeeded", atMs = 22L)),
             ConversationStore(dir).turns(target),
         )
         // 源对话仍是三轮
@@ -503,5 +586,102 @@ class ConversationStoreTest {
         store.append(target, Turn("已有", "好", "succeeded"))
         assertFalse(store.branchBefore(source, target, 0))
         assertEquals(listOf("已有"), store.turns(target).map { it.userText })
+    }
+
+    /** 归档的对话默认不进侧栏;要全部时用 includeArchived;换个实例也还在,取消归档后回来。 */
+    @Test fun archivedConversationsHiddenUntilRequested() {
+        val dir = tmp.newFolder("c")
+        val store = ConversationStore(dir)
+        store.append("a", Turn("查天气", "晴", "succeeded"))
+        store.append("b", Turn("订票", "好了", "succeeded"))
+
+        assertTrue(store.setArchived("a", true, at = 123L))
+        assertEquals(123L, store.archivedAt("a"))
+        assertEquals(listOf("b"), store.list().map { it.id })
+        assertEquals(setOf("a", "b"), store.list(includeArchived = true).map { it.id }.toSet())
+        assertEquals(123L, store.list(includeArchived = true).first { it.id == "a" }.archivedAt)
+
+        val reopened = ConversationStore(dir)
+        assertEquals(123L, reopened.archivedAt("a"))
+        assertEquals(listOf("b"), reopened.list().map { it.id })
+
+        assertTrue(reopened.setArchived("a", false))
+        assertNull(reopened.archivedAt("a"))
+        assertEquals(setOf("a", "b"), reopened.list().map { it.id }.toSet())
+    }
+
+    /** 取消归档记下恢复时间(自动归档据此给一段宽限);删对话时一起删。 */
+    @Test fun unarchiveRecordsTheRestoreTime() {
+        val dir = tmp.newFolder("c")
+        val store = ConversationStore(dir)
+        store.append("a", Turn("查天气", "晴", "succeeded"))
+        store.setArchived("a", true, at = 1L)
+
+        assertTrue(store.setArchived("a", false, at = 456L))
+        assertEquals(456L, store.restoredAt("a"))
+        assertEquals(456L, ConversationStore(dir).list(includeArchived = true).single().restoredAt)
+
+        store.delete("a")
+        assertFalse(File(dir, "a.restored").exists())
+        assertNull(ConversationStore(dir).restoredAt("a"))
+    }
+
+    /** 删掉归档的对话时,旁文件一起删;用新实例看,免得进程里的删除记录挡住。 */
+    @Test fun deleteRemovesArchiveSidecar() {
+        val dir = tmp.newFolder("c")
+        val store = ConversationStore(dir)
+        store.append("a", Turn("查天气", "晴", "succeeded"))
+        store.setArchived("a", true, at = 1L)
+        assertTrue(File(dir, "a.archive").isFile)
+
+        store.delete("a")
+
+        assertFalse(File(dir, "a.archive").exists())
+        assertNull(ConversationStore(dir).archivedAt("a"))
+        assertTrue(ConversationStore(dir).list(includeArchived = true).isEmpty())
+    }
+
+    /** 从归档的对话分出来的分支是新的、活跃的,不继承归档。 */
+    @Test fun branchDoesNotInheritArchive() {
+        val dir = tmp.newFolder("c")
+        val store = ConversationStore(dir)
+        val source = store.newConversation()
+        store.append(source, Turn("一", "甲", "succeeded"))
+        store.setArchived(source, true, at = 1L)
+        val target = store.newConversation()
+
+        assertTrue(store.branch(source, target, 0))
+
+        assertNull(store.archivedAt(target))
+        assertTrue(store.list().any { it.id == target })
+        assertTrue(store.list().none { it.id == source })
+    }
+
+    /** 归档旁文件读不懂时当作没归档,不挡住列表。 */
+    @Test fun corruptArchiveFileIsTreatedAsActive() {
+        val dir = tmp.newFolder("c")
+        val store = ConversationStore(dir)
+        store.append("a", Turn("查天气", "晴", "succeeded"))
+        File(dir, "a.archive").writeText("not-a-time")
+
+        assertNull(store.archivedAt("a"))
+        assertEquals(listOf("a"), store.list().map { it.id })
+    }
+
+    /** 归档的对话来了新的一轮就自动取消归档;只改已有那一轮、只改标题不算。 */
+    @Test fun appendClearsArchiveButEditingAnExistingTurnDoesNot() {
+        val dir = tmp.newFolder("c")
+        val store = ConversationStore(dir)
+        store.append("a", Turn("查天气", "晴", "succeeded"))
+        store.setArchived("a", true, at = 1L)
+
+        store.updateTurn("a", runId = "missing") { it }
+        store.setTitle("a", "天气")
+        assertEquals(1L, store.archivedAt("a"))
+
+        store.append("a", Turn("那明天呢", "也晴", "succeeded"))
+
+        assertNull(store.archivedAt("a"))
+        assertTrue(store.list().any { it.id == "a" })
     }
 }

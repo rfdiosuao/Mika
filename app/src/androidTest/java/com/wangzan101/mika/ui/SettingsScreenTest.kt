@@ -103,6 +103,7 @@ class SettingsScreenTest {
                 computerAccess = false, onOpenComputerAccess = { opened += "computer" },
                 mcpServersCount = 0, onOpenMcpServers = { opened += "mcp" },
                 showDeveloper = true, onOpenDeveloper = { opened += "dev" },
+                onQuit = { opened += "quit" },
             )
         }
         for (t in listOf("网络代理", "文件与计算环境", "连接电脑", "MCP 服务器", "恢复与修复")) {
@@ -110,7 +111,9 @@ class SettingsScreenTest {
             compose.onNodeWithText(t).performClick()
         }
         compose.onNodeWithText("开发者选项").performScrollTo().performClick()
-        assertEquals(listOf("proxy", "sandbox", "computer", "mcp", "recovery", "dev"), opened)
+        scrollTo("完全退出 Mika")
+        compose.onNodeWithText("完全退出 Mika").performClick()
+        assertEquals(listOf("proxy", "sandbox", "computer", "mcp", "recovery", "dev", "quit"), opened)
     }
 
     /** 发布版的高级与其他里没有开发者选项。 */
@@ -296,6 +299,11 @@ class SettingsScreenTest {
         compose.setContent { CapsuleScreen(mode, onMode = { picked += it; mode = it }, onBack = {}) }
         compose.awaitOne("有任务时显示").assertIsDisplayed()
         compose.onNodeWithText("关闭").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("贴边自动隐藏").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("全屏时隐藏胶囊").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("允许添加到快捷设置").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("几秒没碰后的显示程度", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("前台应用铺满屏幕", substring = true).assertDoesNotExist()
         // 脚注在三个选项下面,矮屏或大字号时要滚一下才看得到
         compose.onNodeWithText("无障碍服务", substring = true).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("一直显示").performScrollTo().performClick()

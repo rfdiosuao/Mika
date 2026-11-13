@@ -101,6 +101,7 @@ class CapsuleModelTest {
         assertEquals(CapsuleModel.PREPARING, CapsuleModel.runningText(running(step = 0)))
         assertEquals("照着路线做 3/7", CapsuleModel.runningText(running("在搜牙膏", progress = RunProgress.Replay(3, 7))))
         assertEquals("一次做 4 步", CapsuleModel.runningText(running(progress = RunProgress.Batch(4))))
+        assertEquals("已保存 · 36/36 · 第 36 条", CapsuleModel.runningText(running(progress = RunProgress.Task("已保存", 36, 36, "第 36 条"))))
     }
 
     @Test fun eachStateHasItsLine() {
@@ -445,6 +446,16 @@ class CapsuleModelTest {
         assertEquals(1f, CapsuleFade.alpha(CapsuleKind.HandedOver, 0, pill = false, idleFor = 60_000))
     }
 
+    @Test fun configuredIdleOpacityNeverDimsAttentionStates() {
+        for (opacity in CapsuleIdleOpacity.entries) {
+            assertEquals(opacity.alpha, CapsuleFade.alpha(CapsuleKind.Idle, 0, false, 60_000, opacity.alpha))
+            assertEquals(opacity.alpha, CapsuleFade.alpha(CapsuleKind.Running, 0, false, 60_000, opacity.alpha))
+            assertEquals(1f, CapsuleFade.alpha(CapsuleKind.NeedConfirm, 1, false, 60_000, opacity.alpha))
+            assertEquals(1f, CapsuleFade.alpha(CapsuleKind.NeedAnswer, 0, true, 60_000, opacity.alpha))
+            assertEquals(1f, CapsuleFade.alpha(CapsuleKind.HandedOver, 0, false, 60_000, opacity.alpha))
+        }
+    }
+
     // ---------- 读屏 ----------
 
     @Test fun ballDescribesItsStatus() {
@@ -453,5 +464,66 @@ class CapsuleModelTest {
         assertEquals("Mika 先等等：排队中，点开看详情", CapsuleCopy.describe(CapsuleView.Shown(CapsuleKind.Held, "先等等：排队中")))
         assertEquals("Mika 办好了 · 点开看结果", CapsuleCopy.describe(CapsuleView.Shown(CapsuleKind.Done, "办好了 · 点开看结果")))
         assertEquals(CapsuleCopy.IDLE, CapsuleCopy.describe(CapsuleView.Shown(CapsuleKind.Idle, "")))
+    }
+
+    // ---------- 值得提醒 ----------
+
+    private fun notices(n: Int, vararg runs: CapsuleRun, mode: CapsuleMode = CapsuleMode.Always, kept: KeptPage? = null,
+        foreground: Boolean = false, interactive: Boolean = true, service: Boolean = true) =
+        inputs(*runs, mode = mode, foreground = foreground, interactive = interactive, service = service, kept = kept).copy(notices = n)
+
+    @Test fun noticeShowsOnlyCountOnTheIcon() {
+        val v = shown(model.update(notices(3), 0))
+        assertEquals(CapsuleKind.Notice, v.kind)
+        assertEquals(3, v.count)
+        // 胶囊上不写任何字(更不会有通知里的字),也不展开、不定时变
+        assertEquals("", v.text)
+        assertNull(v.detail)
+        assertTrue(!v.pill)
+        assertNull(v.runKey)
+        assertNull(v.conversationId)
+        assertNull(model.nextChangeAt)
+        assertTrue(!CapsuleKind.Notice.active && !CapsuleKind.Notice.needsYou)
+        // 读屏只说条数
+        assertEquals("Mika，3 条值得提醒", CapsuleCopy.describe(v))
+        // 没有了回到空闲图标
+        assertEquals(CapsuleKind.Idle, shown(model.update(notices(0), 1)).kind)
+    }
+
+    @Test fun noticeRanksAboveIdleBelowEverythingElse() {
+        val live = listOf(
+            run("a", running("在搜")) to CapsuleKind.Running,
+            run("a", takeover, Takeover.Stage.Waiting) to CapsuleKind.NeedTakeover,
+            run("a", takeover, Takeover.Stage.HandedOver) to CapsuleKind.HandedOver,
+            run("a", confirm) to CapsuleKind.NeedConfirm,
+            run("a", TaskState.WaitingInput("哪个?", null)) to CapsuleKind.NeedAnswer,
+            run("a", TaskState.Held(GateReason("queue", "排队中"))) to CapsuleKind.Held,
+            run("a", TaskState.Held(GateReason("pick", "选一个", needsYou = true))) to CapsuleKind.NeedStep,
+        )
+        for (mode in listOf(CapsuleMode.Always, CapsuleMode.DuringTasks)) for ((r, kind) in live) {
+            assertEquals(kind, shown(CapsuleModel().update(notices(2, r, mode = mode), 0)).kind)
+        }
+        // 刚结束的结果(办好了、没办成、已停止)先停着,停完才是提醒
+        for (end in listOf(TaskState.Succeeded("好了"), TaskState.Failed("不行", FailKind.Model), TaskState.Cancelled)) {
+            val m = CapsuleModel()
+            val done = run("a", end)
+            assertNotEquals(CapsuleKind.Notice, shown(m.update(notices(2, done), 10)).kind)
+            assertEquals(CapsuleKind.Notice, shown(m.update(notices(2, done), 10 + CapsuleModel.LINGER_MS)).kind)
+        }
+        // 留着的那一页在它前面
+        assertEquals(CapsuleKind.KeptPage, shown(CapsuleModel().update(notices(2, kept = kept), 0)).kind)
+        assertTrue(CapsuleKind.KeptPage.ordinal < CapsuleKind.Notice.ordinal && CapsuleKind.Notice.ordinal < CapsuleKind.Idle.ordinal)
+    }
+
+    @Test fun noticeOnlyWhenAlwaysAndHiddenUnderEveryHideRule() {
+        // 「有任务时显示」只管任务:没有任务时不为提醒出现(从主动能力页进列表)
+        assertEquals(CapsuleView.Hidden, model.update(notices(2, mode = CapsuleMode.DuringTasks), 0))
+        assertEquals(CapsuleView.Hidden, model.update(notices(2, mode = CapsuleMode.Off), 0))
+        assertEquals(CapsuleView.Hidden, model.update(notices(2, foreground = true), 0))
+        assertEquals(CapsuleView.Hidden, model.update(notices(2, interactive = false), 0))
+        assertEquals(CapsuleView.Hidden, model.update(notices(2, service = false), 0))
+        assertNull(model.nextChangeAt)
+        // 有任务时照旧是任务
+        assertEquals(CapsuleKind.Running, shown(model.update(notices(2, run("a", running("在搜")), mode = CapsuleMode.DuringTasks), 0)).kind)
     }
 }

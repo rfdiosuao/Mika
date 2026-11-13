@@ -21,10 +21,17 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
 import java.io.File
+import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.util.UUID
 
 /** 每个对话一个小 JSON 文件,放在 App 私有目录;重启后仍在。 */
-class ConversationStore(private val dir: File) {
+class ConversationStore(
+    private val dir: File,
+    private val clock: () -> Long = System::currentTimeMillis,
+    private val readConversation: (File) -> String = { it.readText() },
+) {
     constructor(context: Context) : this(File(context.filesDir, "conversations"))
 
     fun newConversation(): String = UUID.randomUUID().toString()
@@ -84,17 +91,55 @@ class ConversationStore(private val dir: File) {
     /**
      * 对话列表,最近改过的在前;[ConversationSummary.title] 是标题(用户改的或起好的),没有时是第一句话;
      * [ConversationSummary.pinnedAt] 是置顶的时间;[ConversationSummary.page] 是从哪一页开始的;
-     * [ConversationSummary.branchOf] 是从哪个对话的第几轮分出来的。没有内容的对话不列。
+     * [ConversationSummary.branchOf] 是从哪个对话的第几轮分出来的;[ConversationSummary.archivedAt] 是归档的时间;
+     * [ConversationSummary.restoredAt] 是最近一次手动取消归档的时间(自动归档据此给一段宽限)。
+     * 没有内容的对话不列;归档的对话默认不列,见 [includeArchived]。
      */
+    fun list(includeArchived: Boolean = false): List<ConversationSummary> =
+        listPage(0, Int.MAX_VALUE, includeArchived = includeArchived)
+
+    /**
+     * 侧栏搜索用的正文索引:标题由调用方连同 [ConversationSummary] 一起传进来,正文按对话文件的修改时间缓存。
+     * 读文件不占本类的锁,不挡正在收尾的任务补写。
+     */
+    val search: ConversationSearch = ConversationSearch(::file) { read(it)?.map { record -> record.first } }
+
+    /** 尚未保存首轮的活动对话排在前面，与磁盘上的对话共用一套分页。归档的对话默认不列。 */
     @Synchronized
-    fun list(): List<ConversationSummary> =
-        dir.listFiles { f -> f.isFile && f.name.endsWith(".json") }.orEmpty()
-            .sortedByDescending { it.lastModified() }
-            .mapNotNull { f ->
-                val id = f.name.removeSuffix(".json")
-                val first = turns(id).firstOrNull() ?: return@mapNotNull null
-                ConversationSummary(id, title(id) ?: first.userText, f.lastModified(), pinnedAt(id), pageOrigin(id), branchOrigin(id))
+    fun listPage(
+        offset: Int,
+        limit: Int,
+        pending: List<ConversationSummary> = emptyList(),
+        includeArchived: Boolean = false,
+    ): List<ConversationSummary> {
+        val unsaved = pending.asSequence()
+            .filter { firstMessage(file(it.id)) == null }
+            .filter { includeArchived || archivedAt(it.id) == null }
+        val saved = dir.listFiles { f -> f.isFile && f.name.endsWith(".json") }.orEmpty()
+            .map { it to it.lastModified() }
+            .sortedWith(compareByDescending<Pair<File, Long>> { it.second }.thenBy { it.first.name })
+            .asSequence().mapNotNull { (f, updatedAt) ->
+                val first = firstMessage(f) ?: return@mapNotNull null
+                val id = f.nameWithoutExtension
+                val archivedAt = archivedAt(id)
+                if (!includeArchived && archivedAt != null) return@mapNotNull null
+                ConversationSummary(id, title(id) ?: first, updatedAt, pinnedAt(id), pageOrigin(id), branchOrigin(id), archivedAt, restoredAt(id))
             }
+        return (unsaved + saved).drop(offset).take(limit).toList()
+    }
+
+    private data class FirstMessage(val modified: Long, val size: Long, val text: String?)
+    private val firstMessages = mutableMapOf<String, FirstMessage>()
+
+    private fun firstMessage(f: File): String? {
+        if (!f.isFile) return null
+        val modified = f.lastModified()
+        val size = f.length()
+        firstMessages[f.name]?.let { if (it.modified == modified && it.size == size) return it.text }
+        val text = read(f)?.firstOrNull()?.first?.userText
+        firstMessages[f.name] = FirstMessage(modified, size, text)
+        return text
+    }
 
     /** 对话文件最后改动的时间;对话不存在为 null。只看这一个对话,不像 [list] 要读遍所有对话(远程轮询用)。 */
     @Synchronized
@@ -110,6 +155,14 @@ class ConversationStore(private val dir: File) {
      * 再往里存进一轮([append])就是重新开始用这个编号,从这里拿掉。只记在进程里。
      */
     private val deleted = mutableSetOf<String>()
+    // 只在本进程、这把锁内使用，防止筛选后发生写入的对话被旧快照归档。
+    private val archiveVersions = mutableMapOf<String, Long>()
+    private data class MessageTime(val modified: Long, val size: Long, val time: Long?)
+    private val messageTimes = mutableMapOf<String, MessageTime>()
+    private fun bumpArchiveVersion(id: String) {
+        val key = safe(id)
+        archiveVersions[key] = (archiveVersions[key] ?: 0L) + 1L
+    }
 
     /**
      * 删掉一个对话存下的一切:对话文件、标题、置顶、网页来源、分支来源,以及写到一半的临时文件和挪到一边的损坏文件。
@@ -118,13 +171,22 @@ class ConversationStore(private val dir: File) {
      */
     @Synchronized
     fun delete(conversationId: String) {
-        deleted += safe(conversationId)
+        bumpArchiveVersion(conversationId)
         val main = file(conversationId).name
-        dir.listFiles { f ->
-            f.isFile && (f.name == main || f.name.startsWith("$main.") || f.name == titleFile(conversationId).name || f.name == pinFile(conversationId).name ||
-                f.name == pageFile(conversationId).name || f.name == branchFile(conversationId).name)
+        val metadata = setOf(titleFile(conversationId).name, pinFile(conversationId).name,
+            pageFile(conversationId).name, branchFile(conversationId).name, archiveFile(conversationId).name,
+            restoreFile(conversationId).name)
+        val files = dir.listFiles { f -> f.name == main || f.name.startsWith("$main.") || f.name in metadata }
+            ?: if (Files.notExists(dir.toPath())) emptyArray() else throw IOException("Cannot list conversation files")
+        // Leave the history in place if any of its companion files cannot be removed.
+        files.sortedBy { it.name == main }.forEach { file ->
+            val path = file.toPath()
+            if (Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) throw IOException("Unexpected conversation directory: ${file.name}")
+            Files.deleteIfExists(path)
         }
-            .orEmpty().forEach { it.delete() }
+        deleted += safe(conversationId)
+        firstMessages.remove(main)
+        messageTimes.remove(main)
         // 删掉的正是用户此刻在的那个:不再指着它,胶囊回落到最近那个
         if (_current.value == CurrentChat.Open(safe(conversationId))) setCurrent(null)
         _changes.tryEmit(conversationId)
@@ -163,6 +225,7 @@ class ConversationStore(private val dir: File) {
     @Synchronized
     fun setPinned(conversationId: String, pinned: Boolean, at: Long = System.currentTimeMillis()): Boolean {
         if (safe(conversationId) in deleted) return false
+        bumpArchiveVersion(conversationId)
         val f = pinFile(conversationId)
         val ok = if (pinned) {
             dir.mkdirs()
@@ -170,6 +233,87 @@ class ConversationStore(private val dir: File) {
         } else !f.exists() || f.delete()
         if (ok) _changes.tryEmit(conversationId)
         return ok
+    }
+
+    /** 对话归档的时间;没归档、读不到为 null。放在对话文件旁边的 `.archive` 文件里。 */
+    @Synchronized
+    fun archivedAt(conversationId: String): Long? =
+        runCatching { archiveFile(conversationId).takeIf { it.isFile }?.readText()?.trim()?.toLongOrNull() }.getOrNull()
+
+    /**
+     * 最近一次手动取消归档的时间;没取消过、读不到为 null。放在 `.restored` 文件里。
+     * 自动归档据此给手动恢复的对话一段宽限,不会刚恢复就又被收走。
+     */
+    @Synchronized
+    fun restoredAt(conversationId: String): Long? =
+        runCatching { restoreFile(conversationId).takeIf { it.isFile }?.readText()?.trim()?.toLongOrNull() }.getOrNull()
+
+    /** 归档([archived] 为真,记下时间 [at])或取消归档。取消归档时另记下恢复时间,见 [restoredAt]。删掉的对话不动。改了返回 true。 */
+    @Synchronized
+    fun setArchived(conversationId: String, archived: Boolean, at: Long = System.currentTimeMillis()): Boolean {
+        if (safe(conversationId) in deleted) return false
+        bumpArchiveVersion(conversationId)
+        val f = archiveFile(conversationId)
+        val ok = if (archived) {
+            dir.mkdirs()
+            runCatching { f.writeText(at.toString()) }.isSuccess
+        } else {
+            val removed = !f.exists() || f.delete()
+            // 手动恢复的时间单独记着:自动归档看到它,会给这个对话一段宽限
+            if (removed && dir.isDirectory) runCatching { restoreFile(conversationId).writeText(at.toString()) }
+            removed
+        }
+        if (ok) _changes.tryEmit(conversationId)
+        return ok
+    }
+
+    /** 消息时间缺失的旧记录使用文件时间；后台补写不应改变有时间记录的最后消息时间。 */
+    private fun lastMessageAt(f: File): Long? {
+        val records = read(f)?.takeIf { it.isNotEmpty() } ?: return null
+        return records.maxOf { it.first.atMs ?: f.lastModified() }
+    }
+
+    internal data class ArchiveCandidate(val id: String, val version: Long)
+
+    /** 仅快照文件名和版本，不持锁读取所有对话正文。 */
+    @Synchronized
+    internal fun autoArchiveCandidates(): List<ArchiveCandidate> =
+        dir.listFiles { f -> f.isFile && f.name.endsWith(".json") }.orEmpty().map { f ->
+            val id = f.nameWithoutExtension
+            ArchiveCandidate(id, archiveVersions[id] ?: 0L)
+        }
+
+    /** 正文在锁外读取，写入前再次检查状态和文件是否变化。 */
+    internal fun archiveIfStillEligible(
+        candidate: ArchiveCandidate,
+        cutoff: Long,
+        at: Long,
+        isRunning: (String) -> Boolean = { false },
+    ): Boolean {
+        val id = candidate.id
+        val f = file(id)
+        fun eligible(): Boolean = !isRunning(id) &&
+            (archiveVersions[id] ?: 0L) == candidate.version &&
+            pinnedAt(id) == null && archivedAt(id) == null &&
+            (restoredAt(id)?.let { it >= cutoff } != true) &&
+            currentChat() != CurrentChat.Open(id)
+
+        val snapshot = synchronized(this) {
+            if (!eligible() || !f.isFile) return false
+            val modified = f.lastModified()
+            val size = f.length()
+            val cached = messageTimes[f.name]?.takeIf { it.modified == modified && it.size == size }
+            (cached ?: MessageTime(modified, size, null)) to (cached != null)
+        }
+        val (fileState, cached) = snapshot
+        val time = if (cached) fileState.time else runCatching { lastMessageAt(f) }.getOrNull()
+        return synchronized(this) {
+            if (!eligible() || !f.isFile || f.lastModified() != fileState.modified || f.length() != fileState.size) return false
+            if (time == null) return false
+            messageTimes[f.name] = fileState.copy(time = time)
+            if (time >= cutoff) return false
+            setArchived(id, archived = true, at = at)
+        }
     }
 
     /**
@@ -279,9 +423,32 @@ class ConversationStore(private val dir: File) {
         return read(f).orEmpty()
     }
 
+    internal data class RecordsSnapshot(
+        val conversations: List<Pair<String, List<Pair<Turn, List<SharedFile>>>>>,
+        val hasReadFailures: Boolean,
+    )
+
+    /** 读取所有已保存的对话；单个文件读不到时保留其余结果并标记失败。 */
+    @Synchronized
+    internal fun allRecords(): RecordsSnapshot {
+        val exists = runCatching { dir.exists() }.getOrElse { return RecordsSnapshot(emptyList(), true) }
+        if (!exists) return RecordsSnapshot(emptyList(), false)
+        val files = runCatching { dir.listFiles { f -> f.isFile && f.name.endsWith(".json") } }.getOrNull()
+            ?: return RecordsSnapshot(emptyList(), true)
+        var failed = false
+        val conversations = files.sortedBy { it.name }.mapNotNull { f ->
+            val records = runCatching { read(f) }.getOrNull()
+            if (records == null) {
+                failed = true
+                null
+            } else f.nameWithoutExtension to records
+        }
+        return RecordsSnapshot(conversations, failed)
+    }
+
     /** 读不懂(不是 JSON 数组)时返回 null。 */
     private fun read(f: File): List<Pair<Turn, List<SharedFile>>>? = try {
-        (Json.parseToJsonElement(f.readText()) as? JsonArray)?.mapNotNull { e ->
+        (Json.parseToJsonElement(readConversation(f)) as? JsonArray)?.mapNotNull { e ->
             val o = e as? JsonObject ?: return@mapNotNull null
             fun field(k: String) = (o[k] as? JsonPrimitive)?.contentOrNull
             val turn = Turn(
@@ -300,6 +467,10 @@ class ConversationStore(private val dir: File) {
                 groups = (o["groups"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull } ?: emptyList(),
                 keptPage = field("keptPage"),
                 keptPageClosed = field("keptPageClosed"),
+                atMs = field("atMs")?.toLongOrNull(),
+                verified = field("verified")?.toBooleanStrictOrNull(),
+                remoteTaskId = field("remoteTaskId"),
+                outcomeSystemType = field("outcomeSystemType"),
             )
             turn to (o["files"] as? JsonArray).orEmpty().mapNotNull(::fileOf)
         }
@@ -310,19 +481,27 @@ class ConversationStore(private val dir: File) {
     private fun fileOf(e: kotlinx.serialization.json.JsonElement): SharedFile? {
         val o = e as? JsonObject ?: return null
         fun field(k: String) = (o[k] as? JsonPrimitive)?.contentOrNull
-        return SharedFile(field("name") ?: return null, field("size")?.toLongOrNull() ?: 0, field("savedAs") ?: return null, field("uri") ?: return null)
+        return SharedFile(field("name") ?: return null, field("size")?.toLongOrNull() ?: 0, field("savedAs").orEmpty(), field("uri").orEmpty(), field("sha256"))
     }
 
+    /**
+     * 往对话里存进一轮。有新的一轮就是又有动静了,归档的对话自动取消归档(和主流聊天软件一致);
+     * 只改已有那一轮的 [updateTurn] 不算。
+     */
     @Synchronized
     fun append(conversationId: String, turn: Turn, files: List<SharedFile> = emptyList()) {
+        bumpArchiveVersion(conversationId)
         deleted -= safe(conversationId)
+        // 先解除归档再写:write 发出的 changes 里读到的就是取消归档后的状态
+        archiveFile(conversationId).delete()
         val f = file(conversationId)
         val prior = if (f.isFile) read(f) else emptyList()
         if (prior == null) {
             // 损坏的文件挪到一边留着,不拿新内容覆盖掉
             f.renameTo(File(dir, "${f.name}.corrupt-${System.currentTimeMillis()}"))
         }
-        write(conversationId, prior.orEmpty() + (turn to files))
+        val stored = if (turn.atMs == null) turn.copy(atMs = clock()) else turn
+        write(conversationId, prior.orEmpty() + (stored to files))
     }
 
     /** 改运行编号为 [runId] 的那一轮(任务结束后补上判的结局、记忆与技能提示);找不到就不动。 */
@@ -347,11 +526,16 @@ class ConversationStore(private val dir: File) {
     }
 
     private fun write(conversationId: String, all: List<Pair<Turn, List<SharedFile>>>) {
+        bumpArchiveVersion(conversationId)
+        messageTimes.remove(file(conversationId).name)
         dir.mkdirs()
         val json = JsonArray(all.map { (it, fs) ->
             buildJsonObject {
                 put("userText", it.userText); put("outcome", it.outcome); put("status", it.status)
                 it.note?.let { n -> put("note", n) }; it.runId?.let { r -> put("runId", r) }; it.result?.let { r -> put("result", r) }
+                it.verified?.let { v -> put("verified", v) }
+                it.remoteTaskId?.let { id -> put("remoteTaskId", id) }
+                it.outcomeSystemType?.let { type -> put("outcomeSystemType", type) }
                 // 只存种类和编号:记忆内容只在加密的记忆文件里,界面现取
                 if (it.memoryNotes.isNotEmpty()) put("memoryNotes", JsonArray(it.memoryNotes.map { n ->
                     buildJsonObject {
@@ -366,11 +550,15 @@ class ConversationStore(private val dir: File) {
                 if (it.finishedReplies.any(String::isNotEmpty)) put("finishedReplies", JsonArray(it.finishedReplies.map(::JsonPrimitive)))
                 if (it.groups.isNotEmpty()) put("groups", JsonArray(it.groups.map(::JsonPrimitive)))
                 it.keptPage?.let { h -> put("keptPage", h) }; it.keptPageClosed?.let { r -> put("keptPageClosed", r) }
+                it.atMs?.let { t -> put("atMs", t) }
                 if (it.skillNotes.isNotEmpty()) put("skillNotes", JsonArray(it.skillNotes.map { n ->
                     buildJsonObject { put("text", n.text); n.draftId?.let { d -> put("draftId", d) }; n.suspended?.let { x -> put("suspended", x) } }
                 }))
                 if (fs.isNotEmpty()) put("files", JsonArray(fs.map { f ->
-                    buildJsonObject { put("name", f.name); put("size", f.size); put("savedAs", f.savedAs); put("uri", f.uri) }
+                    buildJsonObject {
+                        put("name", f.name); put("size", f.size); put("savedAs", f.savedAs); put("uri", f.uri)
+                        f.sha256?.let { put("sha256", it) }
+                    }
                 }))
             }
         })
@@ -381,6 +569,7 @@ class ConversationStore(private val dir: File) {
             file(conversationId).writeText(json.toString())
             tmp.delete()
         }
+        firstMessages.remove(file(conversationId).name)
         _changes.tryEmit(conversationId)
     }
 
@@ -401,6 +590,8 @@ class ConversationStore(private val dir: File) {
     private fun pinFile(id: String) = File(dir, "${safe(id)}.pin")
     private fun pageFile(id: String) = File(dir, "${safe(id)}.page")
     private fun branchFile(id: String) = File(dir, "${safe(id)}.branch")
+    private fun archiveFile(id: String) = File(dir, "${safe(id)}.archive")
+    private fun restoreFile(id: String) = File(dir, "${safe(id)}.restored")
 
     /** 用户此刻在哪个对话,见 [CurrentChat];不是 `.json`,不进 [list]。 */
     private fun currentFile() = File(dir, "current")
@@ -414,6 +605,9 @@ data class ConversationSummary(
     val pinnedAt: Long? = null,
     val page: PageOrigin? = null,
     val branchOf: BranchOrigin? = null,
+    val archivedAt: Long? = null,
+    /** 最近一次手动取消归档的时间;自动归档给它一段宽限。 */
+    val restoredAt: Long? = null,
 )
 
 /** 分支来源:从 [parentId] 的第 [parentTurn] 轮(0 起)分出来的;[afterTurn] 为 false 时是复制到这一轮之前(第 2 阶段从用户消息重新问)。 */

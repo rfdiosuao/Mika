@@ -21,9 +21,9 @@ android {
         applicationId = "top.heang.lom.mika"
         minSdk = 30
         targetSdk = 35
-        // Lom 版自己的版本序列,只增不减:0.1.37 的第 1 个 Lom 构建 = 1_037_001。与原版 Mika 的 versionCode 互不相干(包名不同)
-        versionCode = 1_037_001
-        versionName = "0.1.37-lom.1"
+        // Lom 版自己的版本序列,只增不减:上游 0.1.41 的第 1 个 Lom 构建 = 1_041_001。与原版 Mika 的 versionCode 互不相干(包名不同)
+        versionCode = 1_041_001
+        versionName = "0.1.41-lom.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "GIT_HASH", "\"$gitHash\"")
         // 关于页版本号后的 Beta 标记;出正式版时改成 false
@@ -31,6 +31,7 @@ android {
         // 应用内检查更新读的发布接口。Lom 版不能读原作者仓库(那里的包是原版 Mika,装上去会变成另一个应用);
         // Lom 版自己的更新源还没有,留空 = 不检查。有了再填 GitHub 发布页接口格式的地址。
         buildConfigField("String", "UPDATE_API", "\"\"")
+        buildConfigField("boolean", "ADB_LOGS", "false")
     }
 
     // 正式签名:密钥库放在仓库之外,路径和密码来自环境变量或不提交的 keystore.properties(见 .gitignore)。
@@ -95,6 +96,17 @@ android {
             initWith(getByName("release"))
             signingConfig = signingConfigs.getByName("debug")
             isProfileable = true
+            matchingFallbacks += "release"
+        }
+        // 本地日志检查包：并排安装，允许 adb run-as，首次启动即记录详细 Trace。
+        create("logs") {
+            initWith(getByName("perf"))
+            applicationIdSuffix = ".logs"
+            versionNameSuffix = "-logs"
+            isDebuggable = true
+            isProfileable = false
+            resValue("string", "app_name", "Mika Logs")
+            buildConfigField("boolean", "ADB_LOGS", "true")
             matchingFallbacks += "release"
         }
     }
