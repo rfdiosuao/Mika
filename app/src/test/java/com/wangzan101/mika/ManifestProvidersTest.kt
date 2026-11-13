@@ -115,6 +115,23 @@ class ManifestProvidersTest {
     }
 
     /**
+     * 定位权限隐含「需要定位硬件」;网页定位不是必需功能,声明成非必需,没有 GPS 的设备也能装。
+     */
+    @Test
+    fun locationIsDeclaredAsAnOptionalFeature() {
+        val doc = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+            .newDocumentBuilder().parse(File("src/main/AndroidManifest.xml"))
+        val nodes = doc.getElementsByTagName("uses-feature")
+        val features = (0 until nodes.length).map { nodes.item(it) as Element }
+            .associateBy { it.getAttributeNS(androidNs, "name") }
+        for (name in listOf("android.hardware.location", "android.hardware.location.gps")) {
+            val feature = features[name]
+            assertTrue("uses-feature $name is missing", feature != null)
+            assertEquals(name, "false", feature!!.getAttributeNS(androidNs, "required"))
+        }
+    }
+
+    /**
      * 兼容性自检的测试页对外开放只为让内置助手(shell)开它:调用方必须持有 INTERACT_ACROSS_USERS_FULL,普通 App 打不开;
      * 没有 intent-filter,只能按组件名开;单独一个任务、不进最近任务。助手认的类名和清单一致。
      */
@@ -132,6 +149,49 @@ class ManifestProvidersTest {
         assertEquals("true", a.getAttributeNS(androidNs, "excludeFromRecents"))
         assertTrue(a.hasAttributeNS(androidNs, "taskAffinity"))
         assertEquals("", a.getAttributeNS(androidNs, "taskAffinity"))
+    }
+
+    @Test fun capsuleTileIsBoundOnlyByAndroidQuickSettings() {
+        val doc = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+            .newDocumentBuilder().parse(File("src/main/AndroidManifest.xml"))
+        val services = doc.getElementsByTagName("service")
+        val tile = (0 until services.length).map { services.item(it) as Element }
+            .single { it.getAttributeNS(androidNs, "name") == ".capsule.CapsuleTileService" }
+        assertEquals("false", tile.getAttributeNS(androidNs, "enabled"))
+        assertEquals("true", tile.getAttributeNS(androidNs, "exported"))
+        assertEquals("@string/capsule_tile_label", tile.getAttributeNS(androidNs, "label"))
+        assertEquals("@drawable/ic_notification", tile.getAttributeNS(androidNs, "icon"))
+        assertEquals("android.permission.BIND_QUICK_SETTINGS_TILE", tile.getAttributeNS(androidNs, "permission"))
+        val actions = tile.getElementsByTagName("action")
+        assertEquals(1, actions.length)
+        assertEquals("android.service.quicksettings.action.QS_TILE",
+            (actions.item(0) as Element).getAttributeNS(androidNs, "name"))
+    }
+
+    @Test fun capsuleTileRuntimeKeepsTheSameSystemSafeIcon() {
+        val service = File("src/main/java/com/wangzan101/mika/capsule/CapsuleTileService.kt").readText()
+        assertTrue(service.contains("Icon.createWithResource(this, R.drawable.ic_notification)"))
+        assertTrue(!service.contains("Icon.createWithResource(this, R.mipmap.ic_launcher)"))
+    }
+
+    @Test fun capsuleTileLongPressOpensMikaInsteadOfAppDetails() {
+        val doc = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+            .newDocumentBuilder().parse(File("src/main/AndroidManifest.xml"))
+        val activities = doc.getElementsByTagName("activity")
+        val main = (0 until activities.length).map { activities.item(it) as Element }
+            .single { it.getAttributeNS(androidNs, "name") == ".ui.MainActivity" }
+        val filters = main.getElementsByTagName("intent-filter")
+        val preferences = (0 until filters.length).map { filters.item(it) as Element }.single { filter ->
+            val actions = filter.getElementsByTagName("action")
+            (0 until actions.length).any {
+                (actions.item(it) as Element).getAttributeNS(androidNs, "name") ==
+                    "android.service.quicksettings.action.QS_TILE_PREFERENCES"
+            }
+        }
+        val categories = preferences.getElementsByTagName("category")
+        assertTrue((0 until categories.length).any {
+            (categories.item(it) as Element).getAttributeNS(androidNs, "name") == "android.intent.category.DEFAULT"
+        })
     }
 
     /** 内置助手进程按这个全名启动。 */

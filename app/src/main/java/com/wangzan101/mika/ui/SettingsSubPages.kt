@@ -1,5 +1,9 @@
 package com.wangzan101.mika.ui
 
+import android.app.TimePickerDialog
+import android.text.format.DateFormat
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import com.wangzan101.mika.i18n.tr
 import com.wangzan101.mika.i18n.trPlural
 import com.wangzan101.mika.R
@@ -7,7 +11,23 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import com.wangzan101.mika.settings.FeatureFlags
+import com.wangzan101.mika.settings.ThemeAccent
 import com.wangzan101.mika.settings.ThemeMode
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import com.wangzan101.mika.ui.theme.accentTone
+import com.wangzan101.mika.ui.theme.SkinImage
+import com.wangzan101.mika.ui.components.SegmentedControl
+import com.wangzan101.mika.settings.SkinBlur
+import com.wangzan101.mika.settings.SkinSpec
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import com.wangzan101.mika.ui.components.MikaSwitch
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -15,6 +35,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import com.wangzan101.mika.ui.components.MikaDialog
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -27,11 +48,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.wangzan101.mika.capsule.CapsuleCardScale
+import com.wangzan101.mika.capsule.CapsuleIdleOpacity
 import com.wangzan101.mika.capsule.CapsuleMode
+import com.wangzan101.mika.capsule.CapsuleTileService
 import com.wangzan101.mika.core.shell.BuiltinShellStatus
 import com.wangzan101.mika.settings.ChannelRow
 import com.wangzan101.mika.settings.Prerequisites
 import com.wangzan101.mika.settings.Problem
+import com.wangzan101.mika.settings.ScheduledQuietHours
 import com.wangzan101.mika.settings.SystemStatus
 import com.wangzan101.mika.settings.notificationOverview
 import com.wangzan101.mika.task.ParallelLimit
@@ -49,6 +74,10 @@ import com.wangzan101.mika.ui.theme.MikaIcons
 import com.wangzan101.mika.ui.theme.MikaTheme
 import com.wangzan101.mika.ui.theme.MikaType
 import com.wangzan101.mika.core.cap.phone.OperatingPace
+import com.wangzan101.mika.core.usage.TokenBudgetLimits
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
+import kotlin.math.roundToInt
 
 // ---------- 手机操作 ----------
 
@@ -135,12 +164,18 @@ fun PhoneOpsScreen(
 // ---------- 通知 ----------
 
 /**
- * 设置 › 通知:只看状态、去系统里改。顶上是 App 通知总开关,下面三个任务通知频道各一行(什么时候发 + 现在会不会弹出),
- * 点哪一行都由 [onFix] 打开对应的系统设置页(总开关没开时先请求权限或打开应用通知页)。
+ * 设置 › 通知:显示系统通知频道状态，并设置定时任务的免打扰时段。
  */
 @Composable
 fun NotificationsScreen(status: SystemStatus, onFix: (Fix) -> Unit, onBack: () -> Unit) {
     val o = status.notificationOverview()
+    val context = LocalContext.current
+    val flags = remember(context) { FeatureFlags.get(context) }
+    var quietHours by remember(flags) { mutableStateOf(flags.scheduledQuietHours()) }
+    fun updateQuietHours(hours: ScheduledQuietHours) {
+        flags.setScheduledQuietHours(hours)
+        quietHours = hours
+    }
     PageScaffold(StatusCopy.NOTIFICATIONS, onBack) {
         GroupCard {
             ListRow(
@@ -159,6 +194,46 @@ fun NotificationsScreen(status: SystemStatus, onFix: (Fix) -> Unit, onBack: () -
             ChannelRowItem(StatusCopy.PROGRESS_CHANNEL, StatusCopy.NOTIF_PROGRESS_WHEN, o.progress, Fix.OpenProgressChannel, onFix)
         }
         FooterNote(StatusCopy.NOTIF_FOOTER)
+        GroupCard {
+            ListRow(
+                MikaIcons.Mute, stringResource(R.string.settings_scheduled_quiet),
+                stringResource(R.string.settings_scheduled_quiet_detail), first = true,
+                onClick = { updateQuietHours(quietHours.copy(enabled = !quietHours.enabled)) },
+            ) {
+                MikaSwitch(quietHours.enabled, { updateQuietHours(quietHours.copy(enabled = it)) },
+                    Modifier.testTag("scheduled-quiet-switch"))
+            }
+            if (quietHours.enabled) {
+                QuietHoursTimeRow(R.string.settings_scheduled_quiet_start, quietHours.start) {
+                    updateQuietHours(quietHours.copy(start = it))
+                }
+                QuietHoursTimeRow(R.string.settings_scheduled_quiet_end, quietHours.end) {
+                    updateQuietHours(quietHours.copy(end = it))
+                }
+            }
+        }
+        if (quietHours.enabled && quietHours.start == quietHours.end) {
+            FooterNote(stringResource(R.string.settings_scheduled_quiet_equal))
+        }
+    }
+}
+
+@Composable
+private fun QuietHoursTimeRow(label: Int, time: LocalTime, onChange: (LocalTime) -> Unit) {
+    val context = LocalContext.current
+    val title = stringResource(label)
+    val use24HourClock = DateFormat.is24HourFormat(context)
+    val locale = context.resources.configuration.locales[0]
+    val pattern = DateFormat.getBestDateTimePattern(locale, if (use24HourClock) "Hm" else "hm")
+    ListRow(MikaIcons.Clock, title, onClick = {
+        TimePickerDialog(context, { _, hour, minute -> onChange(LocalTime.of(hour, minute)) },
+            time.hour, time.minute, use24HourClock).apply {
+            setTitle(title)
+            show()
+        }
+    }) {
+        RowValue(DateTimeFormatter.ofPattern(pattern, locale).format(time))
+        RowChevron()
     }
 }
 
@@ -192,10 +267,16 @@ fun DuringWorkScreen(
     autonomous: Boolean = false, onAutonomous: (Boolean) -> Unit = {},
     operatingPace: OperatingPace = OperatingPace.DEFAULT, onOperatingPace: (OperatingPace) -> Unit = {},
     selfConfig: Boolean = false, onSelfConfig: (Boolean) -> Unit = {},
+    selfOperate: Boolean = false, onSelfOperate: (Boolean) -> Unit = {},
+    pipOperate: Boolean = false, onPipOperate: (Boolean) -> Unit = {},
+    externalSchedule: Boolean = false, onExternalSchedule: (Boolean) -> Unit = {},
     stepLimit: Int? = null, onStepLimit: (Int?) -> Unit = {},
+    tokenBudget: Long? = null, onTokenBudget: (Long?) -> Unit = {},
 ) {
     var editingLimit by remember { mutableStateOf(false) }
     var customLimit by remember { mutableStateOf("") }
+    var editingTokenBudget by remember { mutableStateOf(false) }
+    var customTokenBudget by remember { mutableStateOf("") }
     PageScaffold(stringResource(R.string.settings_during_work), onBack) {
         GroupLabel(AutonomyCopy.GROUP)
         GroupCard {
@@ -217,6 +298,14 @@ fun DuringWorkScreen(
                 // 当前是自己填的数时,输入框里带着它
                 onClick = { customLimit = stepLimit?.takeIf { it !in STEP_LIMIT_PRESETS }?.toString().orEmpty(); editingLimit = true },
             )
+            ListRow(
+                MikaIcons.Clock, stringResource(R.string.settings_task_token_budget),
+                tokenBudget?.let(::tokenBudgetNumber) ?: stringResource(R.string.settings_token_budget_unlimited),
+                onClick = {
+                    customTokenBudget = tokenBudget?.takeIf { it !in TokenBudgetLimits.PRESETS }?.toString().orEmpty()
+                    editingTokenBudget = true
+                },
+            )
             parallel?.let { ParallelRow(it, onParallelMax) }
         }
         if (editingLimit) StepLimitDialog(
@@ -225,6 +314,15 @@ fun DuringWorkScreen(
             onCustom = { customLimit = it.filter(Char::isDigit).take(3) },
             onPick = { onStepLimit(it); editingLimit = false },
             onDismiss = { editingLimit = false },
+        )
+        if (editingTokenBudget) TokenBudgetDialog(
+            title = stringResource(R.string.settings_task_token_budget),
+            description = stringResource(R.string.settings_task_token_budget_sub),
+            current = tokenBudget,
+            custom = customTokenBudget,
+            onCustom = { customTokenBudget = it.filter(Char::isDigit).take(9) },
+            onPick = { onTokenBudget(it); editingTokenBudget = false },
+            onDismiss = { editingTokenBudget = false },
         )
         // 允许 Mika 改自己的设置:默认关,打开后任务里才有 settings_list、settings_set
         GroupCard {
@@ -235,6 +333,39 @@ fun DuringWorkScreen(
                 onClick = { onSelfConfig(!selfConfig) },
             ) {
                 MikaSwitch(selfConfig, onSelfConfig, Modifier.testTag("work-self-config"))
+            }
+        }
+        // 允许 Mika 操作自己的界面:默认关;打开后任务里才有 mika_open_screen/open_file/notify/copy
+        GroupCard {
+            ListRow(
+                MikaIcons.Screens, stringResource(R.string.settings_self_operate),
+                stringResource(R.string.settings_self_operate_sub),
+                first = true,
+                onClick = { onSelfOperate(!selfOperate) },
+            ) {
+                MikaSwitch(selfOperate, onSelfOperate, Modifier.testTag("work-self-operate"))
+            }
+        }
+        // 允许你在对话里的小窗直接操作虚拟屏(点/滑/返回);默认关,开着时展开小窗就能直接点
+        GroupCard {
+            ListRow(
+                MikaIcons.Back, stringResource(R.string.settings_pip_operate),
+                stringResource(R.string.settings_pip_operate_sub),
+                first = true,
+                onClick = { onPipOperate(!pipOperate) },
+            ) {
+                MikaSwitch(pipOperate, onPipOperate, Modifier.testTag("work-pip-operate"))
+            }
+        }
+        // 允许外部脚本经广播建定时任务;默认关,开着时仍受每分钟限流并标记来源
+        GroupCard {
+            ListRow(
+                MikaIcons.Code, stringResource(R.string.settings_external_schedule),
+                stringResource(R.string.settings_external_schedule_sub),
+                first = true,
+                onClick = { onExternalSchedule(!externalSchedule) },
+            ) {
+                MikaSwitch(externalSchedule, onExternalSchedule, Modifier.testTag("work-external-schedule"))
             }
         }
         GroupLabel(stringResource(R.string.settings_pace))
@@ -341,6 +472,17 @@ object CapsuleSettingsCopy {
     val FOOTNOTE: String get() = tr(R.string.capsule_settings_foot)
     /** 系统可能关掉后台的 App,胶囊跟着不见:请用户在系统设置里放行。 */
     val BACKGROUND: String get() = tr(R.string.capsule_settings_background)
+    val IDLE_OPACITY: String get() = tr(R.string.capsule_idle_opacity)
+    val IDLE_OPACITY_DETAIL: String get() = tr(R.string.capsule_idle_opacity_detail)
+    val CARD_SIZE: String get() = tr(R.string.capsule_card_size)
+    val CARD_SIZE_DETAIL: String get() = tr(R.string.capsule_card_size_detail)
+
+    fun scaleLabel(scale: CapsuleCardScale): String = when (scale) {
+        CapsuleCardScale.Small -> tr(R.string.capsule_card_size_small)
+        CapsuleCardScale.Normal -> tr(R.string.capsule_card_size_normal)
+        CapsuleCardScale.Large -> tr(R.string.capsule_card_size_large)
+        CapsuleCardScale.XLarge -> tr(R.string.capsule_card_size_xlarge)
+    }
 
     fun label(mode: CapsuleMode): String = when (mode) {
         CapsuleMode.Off -> tr(R.string.capsule_mode_off)
@@ -355,9 +497,26 @@ object CapsuleSettingsCopy {
     }
 }
 
-/** 设置 › 悬浮胶囊:关闭 / 有任务时显示(默认) / 一直显示,选了当场生效。 */
+/** 设置 › 悬浮胶囊:关闭 / 有任务时显示(默认) / 一直显示,选了当场生效;静置不透明度与展开卡片的大小。 */
 @Composable
-fun CapsuleScreen(mode: CapsuleMode, onMode: (CapsuleMode) -> Unit, onBack: () -> Unit) {
+fun CapsuleScreen(
+    mode: CapsuleMode,
+    onMode: (CapsuleMode) -> Unit,
+    onBack: () -> Unit,
+    idleOpacity: CapsuleIdleOpacity = CapsuleIdleOpacity.DEFAULT,
+    onIdleOpacity: (CapsuleIdleOpacity) -> Unit = {},
+    cardScale: CapsuleCardScale = CapsuleCardScale.DEFAULT,
+    onCardScale: (CapsuleCardScale) -> Unit = {},
+) {
+    val context = LocalContext.current
+    val flags = remember { FeatureFlags.get(context) }
+    val hideAtEdge by remember(flags) { flags.capsuleHideAtEdgeChanges() }.collectAsState(flags.capsuleHideAtEdge())
+    val hideFullscreen by remember(flags) { flags.capsuleHideFullscreenChanges() }.collectAsState(flags.capsuleHideFullscreen())
+    var quickSettings by remember { mutableStateOf(CapsuleTileService.isAvailable(context)) }
+    fun setQuickSettings(on: Boolean) {
+        CapsuleTileService.setAvailable(context, on)
+        quickSettings = CapsuleTileService.isAvailable(context)
+    }
     PageScaffold(CapsuleSettingsCopy.TITLE, onBack) {
         GroupCard {
             CapsuleMode.entries.forEachIndexed { i, m ->
@@ -365,6 +524,60 @@ fun CapsuleScreen(mode: CapsuleMode, onMode: (CapsuleMode) -> Unit, onBack: () -
                     CapsuleSettingsCopy.label(m), selected = m == mode, onClick = { onMode(m) },
                     subtitle = CapsuleSettingsCopy.detail(m), first = i == 0,
                 )
+            }
+        }
+        GroupLabel(CapsuleSettingsCopy.IDLE_OPACITY)
+        GroupCard {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+                ListRow(
+                    MikaIcons.Photo, CapsuleSettingsCopy.IDLE_OPACITY, CapsuleSettingsCopy.IDLE_OPACITY_DETAIL,
+                    first = true, titleColor = if (mode == CapsuleMode.Off) MikaTheme.colors.ink3 else androidx.compose.ui.graphics.Color.Unspecified,
+                ) { RowValue("${idleOpacity.percent}%") }
+                Slider(
+                    value = CapsuleIdleOpacity.entries.indexOf(idleOpacity).toFloat(),
+                    onValueChange = {
+                        val index = it.roundToInt().coerceIn(CapsuleIdleOpacity.entries.indices)
+                        onIdleOpacity(CapsuleIdleOpacity.entries[index])
+                    },
+                    valueRange = 0f..3f,
+                    steps = 2,
+                    enabled = mode != CapsuleMode.Off,
+                    modifier = Modifier.testTag("capsule-idle-opacity"),
+                )
+            }
+        }
+        GroupLabel(CapsuleSettingsCopy.CARD_SIZE)
+        GroupCard {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)) {
+                ListRow(
+                    MikaIcons.Photo, CapsuleSettingsCopy.CARD_SIZE, CapsuleSettingsCopy.CARD_SIZE_DETAIL,
+                    first = true, titleColor = if (mode == CapsuleMode.Off) MikaTheme.colors.ink3 else androidx.compose.ui.graphics.Color.Unspecified,
+                ) { RowValue(CapsuleSettingsCopy.scaleLabel(cardScale)) }
+                Slider(
+                    value = CapsuleCardScale.entries.indexOf(cardScale).toFloat(),
+                    onValueChange = {
+                        val index = it.roundToInt().coerceIn(CapsuleCardScale.entries.indices)
+                        onCardScale(CapsuleCardScale.entries[index])
+                    },
+                    valueRange = 0f..3f,
+                    steps = 2,
+                    enabled = mode != CapsuleMode.Off,
+                    modifier = Modifier.testTag("capsule-card-size"),
+                )
+            }
+        }
+        GroupCard {
+            ListRow(MikaIcons.EyeOff, stringResource(R.string.capsule_hide_at_edge), first = true,
+                onClick = { flags.setCapsuleHideAtEdge(!hideAtEdge) }) {
+                MikaSwitch(hideAtEdge, flags::setCapsuleHideAtEdge, Modifier.testTag("capsule-hide-at-edge"))
+            }
+            ListRow(MikaIcons.Screens, stringResource(R.string.capsule_hide_fullscreen),
+                onClick = { flags.setCapsuleHideFullscreen(!hideFullscreen) }) {
+                MikaSwitch(hideFullscreen, flags::setCapsuleHideFullscreen, Modifier.testTag("capsule-hide-fullscreen"))
+            }
+            ListRow(MikaIcons.Apps, stringResource(R.string.capsule_tile_enabled),
+                onClick = { setQuickSettings(!quickSettings) }) {
+                MikaSwitch(quickSettings, ::setQuickSettings, Modifier.testTag("capsule-quick-settings"))
             }
         }
         FooterNote(CapsuleSettingsCopy.FOOTNOTE)
@@ -379,6 +592,14 @@ fun LanguageScreen(language: AppLanguage, onLanguage: (AppLanguage) -> Unit, onB
     val flags = remember { FeatureFlags.get(context) }
     // 跟着设置走:任务里改了外观,这页也对得上
     val themeMode by remember(flags) { flags.themeModeChanges() }.collectAsState(flags.themeMode())
+    val themeAccent by remember(flags) { flags.themeAccentChanges() }.collectAsState(flags.themeAccent())
+    val skin by remember(flags) { flags.skinChanges() }.collectAsState(flags.skin())
+    val scope = rememberCoroutineScope()
+    val pickSkin = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) scope.launch {
+            if (!SkinImage.import(context, uri)) Toast.makeText(context, R.string.skin_failed, Toast.LENGTH_SHORT).show()
+        }
+    }
     PageScaffold(stringResource(R.string.appearance_title), onBack) {
         // 语言和外观放在同一页:都是「界面长什么样」
         GroupLabel(stringResource(R.string.appearance_group))
@@ -393,6 +614,30 @@ fun LanguageScreen(language: AppLanguage, onLanguage: (AppLanguage) -> Unit, onB
                     },
                 )
             }
+        }
+        GroupLabel(stringResource(R.string.accent_group))
+        GroupCard {
+            val dark = MikaTheme.colors.isDark
+            // 背景图片的颜色在当强调色时,这里选的暂时不用,行变灰
+            val followingImage = skin.accentHue != null
+            ThemeAccent.entries.forEachIndexed { idx, a ->
+                RadioRow(
+                    accentLabel(a), selected = a == themeAccent, first = idx == 0, enabled = !followingImage,
+                    subtitle = if (a == ThemeAccent.Blue) stringResource(R.string.accent_default) else null,
+                    onClick = { if (a != themeAccent) flags.setThemeAccent(a) },
+                ) {
+                    // 色块按此刻的深浅色画,和选上以后看到的一样
+                    Box(Modifier.size(18.dp).background(accentTone(a, dark).first, CircleShape))
+                }
+            }
+        }
+        GroupLabel(stringResource(R.string.skin_group))
+        GroupCard {
+            ListRow(
+                null, stringResource(if (skin.active) R.string.skin_change else R.string.skin_pick), first = true,
+                onClick = { pickSkin.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+            )
+            if (skin.active) SkinControls(skin, flags::setSkin, onClear = { SkinImage.clear(context) })
         }
         GroupLabel(stringResource(R.string.language_title))
         GroupCard {
@@ -414,6 +659,7 @@ fun languageLabel(l: AppLanguage): String = stringResource(
         AppLanguage.SimplifiedChinese -> R.string.language_simplified_chinese
         AppLanguage.TraditionalChinese -> R.string.language_traditional_chinese
         AppLanguage.Arabic -> R.string.language_arabic
+        AppLanguage.Persian -> R.string.language_persian
         AppLanguage.English -> R.string.language_english
         AppLanguage.Japanese -> R.string.language_japanese
         AppLanguage.Korean -> R.string.language_korean
@@ -488,5 +734,54 @@ fun appearanceLabel(mode: ThemeMode): String = tr(
         ThemeMode.System -> R.string.appearance_system
         ThemeMode.Light -> R.string.appearance_light
         ThemeMode.Dark -> R.string.appearance_dark
+    },
+)
+
+/**
+ * 背景图片的调节:遮罩浓度、图片位置、模糊、强调色跟不跟图片、换回纯色。
+ * 页面底下就是这张图,拖的时候当场看到效果;值变了才写设置(整数百分比、位置按 5% 一档),不是每一帧都写。
+ */
+@Composable
+private fun SkinControls(skin: SkinSpec, onChange: (SkinSpec) -> Unit, onClear: () -> Unit) {
+    val scrimLabel = stringResource(R.string.skin_scrim)
+    ListRow(null, scrimLabel) { RowValue("${skin.scrim}%") }
+    Slider(
+        value = skin.scrim.toFloat(),
+        onValueChange = { v -> v.roundToInt().let { if (it != skin.scrim) onChange(skin.copy(scrim = it)) } },
+        valueRange = SkinSpec.MIN_SCRIM.toFloat()..SkinSpec.MAX_SCRIM.toFloat(),
+        modifier = Modifier.padding(horizontal = 16.dp).semantics { contentDescription = scrimLabel }.testTag("skin-scrim"),
+    )
+    val positionLabel = stringResource(R.string.skin_position)
+    ListRow(null, positionLabel)
+    Slider(
+        value = skin.focus,
+        onValueChange = { v -> ((v * 20).roundToInt() / 20f).let { if (it != skin.focus) onChange(skin.copy(focus = it)) } },
+        valueRange = -1f..1f,
+        modifier = Modifier.padding(horizontal = 16.dp).semantics { contentDescription = positionLabel }.testTag("skin-position"),
+    )
+    ListRow(null, stringResource(R.string.skin_blur))
+    SegmentedControl(
+        listOf(stringResource(R.string.skin_blur_off), stringResource(R.string.skin_blur_light), stringResource(R.string.skin_blur_strong)),
+        selected = skin.blur.ordinal,
+        onSelect = { onChange(skin.copy(blur = SkinBlur.entries[it])) },
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+    )
+    ListRow(
+        null, stringResource(R.string.skin_accent_follow), stringResource(R.string.skin_accent_follow_sub),
+        onClick = { onChange(skin.copy(accentFromImage = !skin.accentFromImage)) },
+    ) {
+        MikaSwitch(skin.accentFromImage, { onChange(skin.copy(accentFromImage = it)) }, Modifier.testTag("skin-accent-follow"))
+    }
+    ListRow(null, stringResource(R.string.skin_clear), onClick = onClear)
+}
+
+fun accentLabel(accent: ThemeAccent): String = tr(
+    when (accent) {
+        ThemeAccent.Blue -> R.string.accent_blue
+        ThemeAccent.Indigo -> R.string.accent_indigo
+        ThemeAccent.Purple -> R.string.accent_purple
+        ThemeAccent.Pink -> R.string.accent_pink
+        ThemeAccent.Teal -> R.string.accent_teal
+        ThemeAccent.Graphite -> R.string.accent_graphite
     },
 )

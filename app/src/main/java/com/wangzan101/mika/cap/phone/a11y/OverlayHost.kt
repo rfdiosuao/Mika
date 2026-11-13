@@ -19,6 +19,13 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityWindowInfo
 import android.graphics.Rect
 import android.view.KeyEvent
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.flow
+import android.view.Display
+import com.wangzan101.mika.capsule.CapsuleAppBounds
+import com.wangzan101.mika.capsule.CapsuleFullscreen
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -183,6 +190,24 @@ class OverlayHost internal constructor(private val service: ScreenAccessibility)
         .map { readImeTop() }
         .distinctUntilChanged()
 
+    /** Enabled only for the optional fullscreen preference. No screenshots, text or app content. */
+    fun fullscreenChanges(): Flow<Boolean> = flow {
+        while (currentCoroutineContext().isActive) {
+            emit(runCatching {
+                val metrics = wm().currentWindowMetrics
+                val windows = service.windowsOn(Display.DEFAULT_DISPLAY)
+                val app = windows.filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }.maxByOrNull { it.layer }
+                val bounds = app?.let { Rect().also(it::getBoundsInScreen) }
+                val safe = metrics.windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.navigationBars() or WindowInsets.Type.displayCutout())
+                CapsuleFullscreen.matches(metrics.bounds.width(), metrics.bounds.height(),
+                    metrics.windowInsets.isVisible(WindowInsets.Type.statusBars()),
+                    bounds?.let { CapsuleAppBounds(it.left, it.top, it.right, it.bottom) },
+                    safe.bottom, safe.left, safe.top, safe.right)
+            }.getOrDefault(false))
+            delay(500)
+        }
+    }.distinctUntilChanged()
+
     private fun readImeTop(): Int? = runCatching {
         service.windows.firstOrNull { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD }
             ?.let { w -> Rect().also(w::getBoundsInScreen) }
@@ -290,6 +315,15 @@ class OverlayWindow internal constructor(
     /** 内容大小变了(胶囊换成卡片、转屏后重排)时调 [onResize],调用方据此重新摆位置。 */
     fun onResize(onResize: (() -> Unit)?) {
         if (isOpen) frame.onResize = onResize
+    }
+
+    /**
+     * 整个窗口显示或隐藏。只把 Compose 内容清空会等下一次排版和换帧,旧帧可能还留在系统的窗口画布上;
+     * 关闭、交替两个窗口时必须显式切换可见性,不能拿空内容当作已经不可见。
+     */
+    fun setVisible(visible: Boolean) {
+        if (!isOpen) return
+        frame.visibility = if (visible) View.VISIBLE else View.INVISIBLE
     }
 
     /**

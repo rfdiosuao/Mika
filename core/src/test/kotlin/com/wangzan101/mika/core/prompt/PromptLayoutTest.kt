@@ -51,7 +51,7 @@ class PromptLayoutTest {
     /** 入口工具(能力那一组收着时也提供的)各有一份短说明,没有多余的;短说明只点名本任务登记的工具。 */
     @Test fun everyEntryToolHasShortDescription() {
         val entries = allTools().filter { it.entry != null }.map { it.name }
-        assertEquals(setOf("phone_launch_app", "phone_list_apps", "phone_set_alarm", "phone_set_timer", "phone_add_calendar_event", "web_navigate", "web_read_page", "run_command"), entries.toSet())
+        assertEquals(setOf("phone_launch_app", "phone_list_apps", "phone_set_alarm", "phone_set_timer", "phone_add_calendar_event", "phone_calendar_bulk_insert", "web_navigate", "web_read_page", "run_command"), entries.toSet())
         assertEquals(entries.map { "$it.md" }.toSet(), files("entries"))
         for (e in entries) {
             val text = File(root, "entries/$e.md").readText()
@@ -64,10 +64,17 @@ class PromptLayoutTest {
         assertEquals(setOf("identity.md", "principles.md"), files("system"))
         assertEquals((listOf("phone", "app-access", "batch", "web", "sandbox", "general", "inline-screen", "channels", "groups", "handover", "root")).map { "$it.md" }.toSet(), files("capabilities"))
         assertEquals(Feedback.FILES.map { "$it.md" }.toSet(), files("feedback"))
-        val roles = setOf("app_classifier", "describe", "intent_gate", "locate", "memory_extract", "route_match", "skill_draft", "app_knowledge", "app_knowledge_input", "verifier", "outcome_judge", "user_screen", "stop_summary", "conversation_title")
+        val roles = setOf("app_classifier", "describe", "intent_gate", "locate", "memory_extract", "route_match", "skill_draft", "app_knowledge", "app_knowledge_input", "verifier", "outcome_judge", "user_screen", "stop_summary", "conversation_title", "teach_skill", "notice_triage", "notice_learn", "notice_notes", "notice_day", "notice_week", "notice_month")
         assertEquals(roles.map { "$it.md" }.toSet(), files("roles"))
         roles.forEach { assertTrue(Prompts.role(it).isNotBlank()) }
         assertEquals(setOf("README.md"), root.listFiles().orEmpty().filter { it.isFile }.map { it.name }.toSet())
+    }
+
+    /** 写出来给用户看的东西(技能、App 知识、记忆)要跟着用户的语言:这几份角色说明是中文,得明说,否则模型照着写中文。 */
+    @Test fun learnedTextFollowsTheUsersLanguage() {
+        listOf("skill_draft", "teach_skill", "app_knowledge", "memory_extract").forEach {
+            assertTrue("$it 没有写明用用户的语言", Prompts.role(it).contains("所用的语言写"))
+        }
     }
 
     /** 反馈目录里的每个键都有代码在用(按错误码的说明整段按前缀取)。 */

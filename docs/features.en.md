@@ -25,15 +25,26 @@ Any app installed on your phone works, with no per-app integration: Mika looks a
 - Logins persist. You can browse yourself from "Browser" (浏览器) in the side drawer, and sites you log into there are available to Mika too.
 - Paces itself: consecutive page loads on the same site are spaced out, longer on sites that limit browsing speed. It recognizes anti-bot block pages and hands them to you instead of forcing through.
 
+## Mika's own pages
+
+- With Settings › During work › "Let Mika operate its own screens" turned on (off by default), Mika can open its Settings, Browser, Memory, Scheduled tasks and other pages for you. It can also open a report, image or PDF from the workspace in Mika's built-in viewer, post a notification, or put a piece of text on the clipboard.
+- After you approve it, it can also put a link or search results in your visible browser; for a site that needs a sign-in, it can open the "sign in for Mika" page so you can sign in yourself and then carry on.
+- Mika never taps its own UI and cannot change its permissions, model or budget; it only opens the page, and you still do the operating.
+
 ## The screen you are looking at
 
 - While you are in another app, a floating Mika capsule at the screen edge shows background task progress, things that need you, and results. Tap it to add a message, answer, approve or stop. If you don't want it, open it and tap "Turn off capsule" at the bottom; you can turn it back on in Settings › Floating capsule.
+- After dragging the capsule to an edge, it fades into a half circle while idle; tap to restore it. Add the Floating capsule tile in Android Quick Settings to switch it on or off. Settings › Floating capsule has optional fullscreen hiding. The expanded chat preview supports pinch resizing and size/reset buttons. See [capsule controls](dev/capsule-controls.md).
 - **Double-tap the capsule** to send the screen you are looking at to Mika, e.g. "how should I reply to this" or "note this down". You can also take a screenshot from the card and add a line before sending.
 
 ## Scheduled and conditional tasks
 
 - "Remind me at 9 tomorrow morning", "check the weather every morning and tell me only if it will rain", "do X every Friday".
-- Runs at the scheduled time in the original conversation and sends the result back. The scheduled tasks page lets you pause, reschedule, run now or delete.
+- Conditions can compare with last time: "tell me when it drops by more than 50" compares with the price from the last time the condition started the task; "tell me every time it rains" speaks up on each rainy day; you can also say "at most once a day".
+- Runs at the scheduled time in the original conversation and sends the result back. The scheduled tasks page lets you create, edit, pause, run now or delete, with a preview of the next three occurrences. A daily or weekly plan can use several local times (e.g. `08:00, 12:30, 20:00`) under one identity and pause switch. In its original conversation, you can also ask to edit its content, condition, reminder or recurrence.
+- Open a scheduled task's menu and select **Run history** to see the times and statuses of its last 10 recorded runs.
+- Choose **Copy as new plan** from a plan's menu to reuse its content, condition, and recurrence. The copy starts paused by default and sends results to the same conversation.
+- Under **Settings › Notifications**, turn on scheduled task quiet hours and choose start and end times. The window repeats daily in the device's local time and can span midnight. Tasks still run, results go back to the conversation, and scheduled results and reminders appear silently in the notification shade.
 
 ## Interrupt or stop anytime
 
@@ -45,7 +56,7 @@ Any app installed on your phone works, with no per-app integration: Mika looks a
 
 ## Hold to talk
 
-- When you are not typing, hold the chat input to speak. When you let go the words land in the input for you to edit; nothing is sent by itself. While a task runs, sending it adds to the task. Slide up until it says "Let go to cancel" and let go to throw that take away.
+- When you are not typing, hold the chat input to speak. When you let go the words land in the input for you to edit; nothing is sent by itself. While a task runs, sending it adds to the task. To send right away, slide up into the "Listening" card; when it turns green and says "Let go to send", let go and the words are sent together with anything already in the input. Slide further up past the card until it says "Let go to cancel" and let go to throw that take away.
 - In other apps, long-press the floating capsule to speak and let go to send it straight to Mika (it adds to a running task, or answers when Mika is asking you). Let go on "Edit" to open the card with the words in its input.
 - By default it uses the phone's built-in speech recognition, which shows words as you speak and costs nothing. If the phone has none, or it is not accurate enough, pick a provider's speech model under Settings › Models › Speech to text; see [models and sign-in](models.en.md#speech-to-text).
 
@@ -75,7 +86,9 @@ The apps and websites that already have usage knowledge are listed in the collap
 ## Linux sandbox
 
 - Each conversation gets a workspace that can run Python, Node and shell commands, process files you send, and save results to your phone's Download/Mika folder.
-- Offline by default; when needed, turn on "Allow scripts to go online" (允许脚本联网) under "Files & computing environment" (文件与计算环境) in Settings. arm64 devices only; on other devices the app installs normally and the sandbox shows "not supported on this device".
+- Open **Files** in the sidebar to browse attachments and exported files. Combine name, conversation, source, and file type filters. File types are determined by extension and include images, PDFs, audio, video, and other files.
+- Long-press a conversation and choose "Terminal", or open "Files & computing environment" in Settings and tap "Open terminal" on a workspace row, to run commands yourself in that conversation's workspace. It uses the same workspace and network setting as Mika's scripts; Mika cannot see what is in the terminal, and terminal commands do not go into the conversation or run records.
+- Online by default; turn off "Allow scripts to go online" (允许脚本联网) under "Files & computing environment" (文件与计算环境) in Settings if you don't need it. arm64 devices only; on other devices the app installs normally and the sandbox shows "not supported on this device".
 - When it is online these commands also use **Settings › Network proxy** (the same proxy Mika uses for model calls, updates and the in-app browser; see [Models and sign-in](models.en.md#network-proxy)).
 - The same page shows how much space the sandbox uses and lets you clear a conversation's workspace files; conversations with a running task are skipped.
 

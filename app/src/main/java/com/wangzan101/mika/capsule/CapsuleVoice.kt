@@ -46,14 +46,11 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.wangzan101.mika.R
@@ -125,6 +122,28 @@ object CapsuleVoice {
 }
 
 /**
+ * 松开后等结果:到 [ms] 还没有人取消就调 [onTimeout]。
+ * [arm] 重新计时(上一次作废);会话交出结果、重新按住、面板收起时 [cancel]。
+ * 单独拎出来是为了能测:引擎卡住时面板一定要自己收掉。
+ */
+internal class VoiceWait(private val scope: CoroutineScope, private val onTimeout: () -> Unit) {
+    private var job: Job? = null
+
+    fun arm(ms: Long) {
+        cancel()
+        job = scope.launch {
+            delay(ms)
+            onTimeout()
+        }
+    }
+
+    fun cancel() {
+        job?.cancel()
+        job = null
+    }
+}
+
+/**
  * 胶囊上一次说话:开会话([begin])、收事件、按着时推计时、手指移动时算落点([move])、松开([finish])。
  * 用手指按着时([byTouch])落点跟着手指;读屏的「说话」没有手指,只会发出。说完([HoldToTalk.State.Done]、
  * [HoldToTalk.State.Problem])交给 [onResult],连同松开时的落点。手还按着时会话先结束了,结果由 [HoldToTalk] 留着,
@@ -169,6 +188,14 @@ internal class CapsuleTalk(
     private var collector: Job? = null
     private var ticker: Job? = null
     private var watcher: Job? = null
+    /** 松开后等结果的兜底,见 [armWatchdog];[waitMs] 按这次用的引擎定。 */
+    private val watchdog = VoiceWait(scope) {
+        if (!active || !released) return@VoiceWait
+        val at = drop ?: aim
+        abort()
+        onResult(at, HoldToTalk.State.Problem(null))
+    }
+    private var waitMs = WAIT_PROVIDER_MS
     private var startedAt = 0L
 
     /** 能不能用、有没有录音权限:都行才开始听。胶囊不是 Activity,弹不了系统的权限框。 */
@@ -185,6 +212,11 @@ internal class CapsuleTalk(
         this.title = title
         this.byTouch = byTouch
         engine = VoiceCopy.engine(spec)
+        waitMs = when (spec) {
+            is SpeechEngineSpec.System -> WAIT_SYSTEM_MS
+            is SpeechEngineSpec.Provider -> WAIT_PROVIDER_MS
+            else -> WAIT_STREAM_MS
+        }
         aim = CapsuleVoice.Drop.Send
         drop = null
         released = false
@@ -210,7 +242,8 @@ internal class CapsuleTalk(
             while (active && !released) {
                 delay(TICK_MS)
                 // 到点按此刻的落点收尾(状态机到点也会自己松开,但它不知道落点)
-                if (SystemClock.elapsedRealtime() - startedAt >= MAX_MS) finish(aim) else hold.tick()
+                val unlimited = (hold.state.value as? HoldToTalk.State.Listening)?.unlimited == true
+                if (!unlimited && SystemClock.elapsedRealtime() - startedAt >= MAX_MS) finish(aim) else hold.tick()
             }
         }
         return Begin.Started
@@ -236,6 +269,16 @@ internal class CapsuleTalk(
         released = true
         hold.armCancel(false)
         hold.release()
+        armWatchdog()
+    }
+
+    /**
+     * 松开后的兜底:引擎自己的收尾时限(自带识别 2 秒,流式连接加收尾约 20 秒,整段转写 30 秒)之外再留一点余量,
+     * 到点还没交出结果就收起面板、当没听清。会话卡住时面板不会一直停在「转文字…」留在屏幕上。
+     */
+    private fun armWatchdog() {
+        if (!active || !released) return
+        watchdog.arm(waitMs)
     }
 
     /** 这一段不要了(拖到取消、胶囊被拆、触摸被系统收走)。可以重复调。 */
@@ -254,6 +297,7 @@ internal class CapsuleTalk(
         watcher = null
         collector?.cancel()
         collector = null
+        watchdog.cancel()
     }
 
     companion object {
@@ -263,6 +307,10 @@ internal class CapsuleTalk(
         const val MIN_TOTAL_MS = 500L
         const val MAX_MS = 60_000L
         private const val TICK_MS = 100L
+        /** 松开后等结果的上限,在引擎自己的收尾时限上各留一点余量(见 [armWatchdog])。 */
+        private const val WAIT_SYSTEM_MS = 8_000L
+        private const val WAIT_STREAM_MS = 25_000L
+        private const val WAIT_PROVIDER_MS = 35_000L
     }
 }
 
@@ -415,18 +463,10 @@ private fun Panel(talk: CapsuleTalk, state: HoldToTalk.State, below: Boolean) {
             listening?.let { Text(ChatCopy.clock(it.elapsedMs), style = TimeText, color = c.ink3) }
         }
         val heard = listening?.let { it.stable + it.tail }.orEmpty()
-        val words = buildAnnotatedString {
-            if (heard.isEmpty()) {
-                val ghost = when {
-                    converting -> ""
-                    listening?.live == true -> stringResource(R.string.voice_say_now)
-                    else -> stringResource(R.string.voice_recording)
-                }
-                withStyle(SpanStyle(color = c.ink3)) { append(ghost) }
-            } else {
-                withStyle(SpanStyle(color = c.ink)) { append(listening?.stable.orEmpty()) }
-                withStyle(SpanStyle(color = c.ink2)) { append(listening?.tail.orEmpty()) }
-            }
+        val ghost = when {
+            converting -> ""
+            listening?.live == true -> stringResource(R.string.voice_say_now)
+            else -> stringResource(R.string.voice_recording)
         }
         if (converting && heard.isEmpty()) {
             Row(
@@ -437,12 +477,11 @@ private fun Panel(talk: CapsuleTalk, state: HoldToTalk.State, below: Boolean) {
                 Text(stringResource(R.string.voice_converting), style = SaidText, color = c.ink2, maxLines = 1)
             }
         } else {
-            Text(
-                words,
-                Modifier.fillMaxWidth().padding(top = 10.dp).heightIn(min = 52.dp).alpha(if (cancel) 0.4f else 1f),
-                style = if (cancel) SaidText.copy(textDecoration = TextDecoration.LineThrough) else SaidText,
-                maxLines = 5, overflow = TextOverflow.Ellipsis,
-            )
+            val style = if (cancel) SaidText.copy(textDecoration = TextDecoration.LineThrough) else SaidText
+            val modifier = Modifier.fillMaxWidth().padding(top = 10.dp).heightIn(min = 52.dp).alpha(if (cancel) 0.4f else 1f)
+            if (heard.isEmpty()) Text(ghost, modifier, style = style, color = c.ink3, maxLines = 5, overflow = TextOverflow.Ellipsis)
+            // 字太多时去掉前面说完的整句,最新的字一直看得见(和输入框同一套)
+            else com.wangzan101.mika.ui.HeardText(listening?.stable.orEmpty(), listening?.tail.orEmpty(), style, maxLines = 5, modifier)
         }
         if (!converting) {
             Box(Modifier.fillMaxWidth().padding(top = 8.dp), contentAlignment = Alignment.Center) {

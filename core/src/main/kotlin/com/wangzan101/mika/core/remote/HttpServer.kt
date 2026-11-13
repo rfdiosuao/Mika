@@ -23,8 +23,11 @@ class HttpRequest(
     val query: String = "",
     /** 失败冷却按它记。本地监听就是对方地址;经网关转发的是网关看到的调用方地址,与本地地址分开记。 */
     val source: String = remote.hostAddress ?: "?",
+    /** 已认证连接的任务归属;未经过 RemoteAccess 的适配器调用只使用兼容作用域。 */
+    val accessOwner: String? = null,
 ) {
     fun header(name: String): String? = headers[name.lowercase()]
+    fun ownedBy(owner: String) = HttpRequest(method, path, headers, body, remote, query, source, owner)
 }
 
 class HttpResponse(val status: Int, val body: ByteArray = ByteArray(0), val headers: Map<String, String> = emptyMap()) {
@@ -112,7 +115,7 @@ class MiniHttpServer(
                 val response = try { handler(request) } catch (e: Exception) { onError(e); HttpResponse.empty(500) }
                 val close = request.header("connection")?.split(',')
                     ?.any { it.trim().equals("close", ignoreCase = true) } == true
-                write(output, response, close)
+                write(output, response, close, headOnly = request.method == "HEAD")
                 if (close) return
             }
         } catch (_: SocketException) {
@@ -229,7 +232,8 @@ class MiniHttpServer(
             500 to "Internal Server Error", 503 to "Service Unavailable",
         )
 
-        fun write(output: OutputStream, r: HttpResponse, close: Boolean) {
+        /** HEAD 保留正文对应的响应头和长度，但不发送正文。 */
+        fun write(output: OutputStream, r: HttpResponse, close: Boolean, headOnly: Boolean = false) {
             val head = StringBuilder("HTTP/1.1 ${r.status} ${REASONS[r.status] ?: "Status"}\r\n")
             r.headers.forEach { (k, v) -> head.append(k).append(": ").append(v).append("\r\n") }
             head.append("Content-Length: ").append(r.body.size).append("\r\n")
@@ -237,7 +241,7 @@ class MiniHttpServer(
             if (close) head.append("Connection: close\r\n")
             head.append("\r\n")
             output.write(head.toString().toByteArray(Charsets.ISO_8859_1))
-            output.write(r.body)
+            if (!headOnly) output.write(r.body)
             output.flush()
         }
     }
